@@ -1,0 +1,12 @@
+{
+  "name": "rolet-web",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel run dev",
+    "build": "pnpm --recursive run build",
+    "test": "pnpm --recursive run test"
+  },
+  "license": "ISC",
+  "packageManager": "pnpm@10.33.2"
+}

@@ -1,0 +1,36 @@
+[toolchain]
+anchor_version = "0.30.1"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+rolet = "2ePEUzCFcxD559Hy3irB2TGbYAwU2UD352sVj77QPrS7"
+
+[programs.devnet]
+rolet = "2ePEUzCFcxD559Hy3irB2TGbYAwU2UD352sVj77QPrS7"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "yarn run ts-mocha -p ./tsconfig.anchor.json -t 1000000 tests/**/*.ts"
+
+[test]
+startup_wait = 5000
+shutdown_wait = 2000
+upgradeable = false
+
+[test.validator]
+bind_address = "0.0.0.0"
+url = "http://127.0.0.1:8899"
+ledger = ".anchor/test-ledger"
+rpc_port = 8899
+
+[[test.validator.clone]]
+address = "SysvarS1otHashes111111111111111111111111111"

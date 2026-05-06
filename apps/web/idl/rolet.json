@@ -1,0 +1,465 @@
+{
+  "address": "2ePEUzCFcxD559Hy3irB2TGbYAwU2UD352sVj77QPrS7",
+  "metadata": {
+    "name": "rolet",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "ROLET — fully on-chain Russian Roulette duel for Solana + MagicBlock"
+  },
+  "instructions": [
+    {
+      "name": "init_match",
+      "discriminator": [168, 73, 110, 30, 58, 141, 39, 145],
+      "accounts": [
+        {
+          "name": "match_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [109, 97, 116, 99, 104] },
+              { "kind": "arg", "path": "match_id" }
+            ]
+          }
+        },
+        { "name": "player_one" },
+        { "name": "player_two" },
+        { "name": "payer", "writable": true, "signer": true },
+        {
+          "name": "slot_hashes",
+          "address": "SysvarS1otHashes111111111111111111111111111"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        { "name": "match_id", "type": "u64" },
+        { "name": "player_one_commit", "type": { "array": ["u8", 32] } },
+        { "name": "player_two_commit", "type": { "array": ["u8", 32] } },
+        { "name": "player_one_secret", "type": { "array": ["u8", 32] } },
+        { "name": "player_two_secret", "type": { "array": ["u8", 32] } }
+      ]
+    },
+    {
+      "name": "play_card",
+      "discriminator": [63, 150, 161, 24, 68, 231, 108, 9],
+      "accounts": [
+        { "name": "match_state", "writable": true },
+        { "name": "current_profile" },
+        { "name": "actor", "signer": true }
+      ],
+      "args": [
+        { "name": "slot", "type": "u8" },
+        { "name": "card", "type": { "defined": { "name": "Card" } } }
+      ]
+    },
+    {
+      "name": "pull_trigger",
+      "discriminator": [117, 91, 127, 197, 236, 221, 236, 6],
+      "accounts": [
+        { "name": "match_state", "writable": true },
+        { "name": "current_profile" },
+        { "name": "actor", "writable": true, "signer": true }
+      ],
+      "args": [{ "name": "target_self", "type": "bool" }]
+    },
+    {
+      "name": "register_session_key",
+      "discriminator": [69, 94, 60, 44, 49, 199, 183, 233],
+      "accounts": [
+        {
+          "name": "profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [112, 114, 111, 102, 105, 108, 101] },
+              { "kind": "account", "path": "authority" }
+            ]
+          }
+        },
+        { "name": "authority", "signer": true }
+      ],
+      "args": [
+        { "name": "session_pubkey", "type": "pubkey" },
+        { "name": "duration_seconds", "type": "i64" }
+      ]
+    },
+    {
+      "name": "settle_match",
+      "discriminator": [71, 124, 117, 96, 191, 217, 116, 24],
+      "accounts": [
+        { "name": "match_state", "writable": true },
+        { "name": "profile_one", "writable": true },
+        { "name": "profile_two", "writable": true },
+        { "name": "vault", "writable": true },
+        { "name": "treasury_ata", "writable": true },
+        { "name": "winner_token_account", "writable": true },
+        { "name": "winner" },
+        { "name": "reward_mint" },
+        { "name": "rent_refund", "writable": true, "signer": true },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "init_player_profile",
+      "discriminator": [225, 236, 248, 172, 39, 129, 249, 160],
+      "accounts": [
+        {
+          "name": "profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [112, 114, 111, 102, 105, 108, 101] },
+              { "kind": "account", "path": "authority" }
+            ]
+          }
+        },
+        { "name": "authority", "writable": true, "signer": true },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        { "name": "sns_domain", "type": "string" },
+        { "name": "character_nft", "type": "pubkey" },
+        { "name": "durability_max", "type": "u8" }
+      ]
+    },
+    {
+      "name": "init_vault",
+      "discriminator": [77, 79, 85, 150, 33, 217, 52, 106],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [118, 97, 117, 108, 116] }
+            ]
+          }
+        },
+        { "name": "reward_mint" },
+        { "name": "treasury_ata", "writable": true },
+        { "name": "authority", "writable": true, "signer": true },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [{ "name": "base_reward_per_match", "type": "u64" }]
+    }
+  ],
+  "accounts": [
+    { "name": "MatchState", "discriminator": [250, 209, 137, 70, 235, 96, 121, 216] },
+    { "name": "PlayerProfile", "discriminator": [82, 226, 99, 87, 164, 130, 181, 80] },
+    { "name": "GameVault", "discriminator": [152, 194, 238, 3, 140, 24, 51, 32] }
+  ],
+  "events": [
+    {
+      "name": "MatchInitialized",
+      "discriminator": [84, 37, 198, 148, 168, 35, 167, 44]
+    },
+    {
+      "name": "CardPlayed",
+      "discriminator": [40, 68, 226, 180, 225, 171, 30, 86]
+    },
+    {
+      "name": "TriggerPulled",
+      "discriminator": [23, 210, 11, 191, 18, 243, 239, 103]
+    },
+    {
+      "name": "MatchSettled",
+      "discriminator": [243, 201, 134, 151, 193, 131, 223, 150]
+    },
+    {
+      "name": "ProfileCreated",
+      "discriminator": [134, 233, 199, 153, 77, 206, 128, 94]
+    },
+    {
+      "name": "VaultInitialized",
+      "discriminator": [180, 43, 207, 2, 18, 71, 3, 75]
+    },
+    {
+      "name": "SessionKeyRegistered",
+      "discriminator": [17, 83, 253, 120, 241, 172, 15, 204]
+    }
+  ],
+  "errors": [
+    { "code": 6000, "name": "MatchNotActive", "msg": "Match is not in an active state" },
+    { "code": 6001, "name": "NotYourTurn", "msg": "It is not your turn" },
+    { "code": 6002, "name": "NotAParticipant", "msg": "Caller is not a participant in this match" },
+    { "code": 6003, "name": "InvalidSlot", "msg": "Hand slot index is out of range" },
+    { "code": 6004, "name": "EmptySlot", "msg": "Selected hand slot is empty" },
+    { "code": 6005, "name": "CardMismatch", "msg": "Card argument does not match the card held in slot" },
+    { "code": 6006, "name": "ChamberOutOfRange", "msg": "Chamber index is out of range" },
+    { "code": 6007, "name": "ChamberAlreadyFired", "msg": "That chamber has already been fired" },
+    { "code": 6008, "name": "SilencedThisTurn", "msg": "You are silenced and cannot play a card this turn" },
+    { "code": 6009, "name": "InvalidReveal", "msg": "Reveal does not match the original commitment" },
+    { "code": 6010, "name": "CardNotImplemented", "msg": "Card effect not yet implemented in this build" },
+    { "code": 6011, "name": "MatchNotCompleted", "msg": "Match has not been finalized in the ER yet" },
+    { "code": 6012, "name": "WinnerNotSet", "msg": "Match is missing a recorded winner" },
+    { "code": 6013, "name": "ProfileMismatch", "msg": "Provided profile does not match a participant of this match" },
+    { "code": 6014, "name": "WinnerMismatch", "msg": "Winner pubkey does not match the recorded match winner" },
+    { "code": 6015, "name": "WinnerAtaMismatch", "msg": "Winner token account is owned by the wrong wallet" },
+    { "code": 6016, "name": "RewardMintMismatch", "msg": "Winner token account is for the wrong reward mint" },
+    { "code": 6017, "name": "TreasuryMismatch", "msg": "Treasury ATA does not match the vault's recorded treasury" },
+    { "code": 6018, "name": "InsufficientVault", "msg": "Vault does not hold enough tokens to pay the reward" },
+    { "code": 6019, "name": "SnsDomainTooLong", "msg": "SNS domain string exceeds the 32-byte cap" },
+    { "code": 6020, "name": "InvalidDurability", "msg": "Durability max must be greater than zero" },
+    { "code": 6021, "name": "UnauthorizedActor", "msg": "Signer is neither the wallet nor a valid (unexpired) session key" },
+    { "code": 6022, "name": "InvalidSessionDuration", "msg": "Session duration must be 1 second to 24 hours" },
+    { "code": 6023, "name": "NoChamberToRestore", "msg": "RestoreBullet has no spent chamber to refill" },
+    { "code": 6024, "name": "CardThiefNoTarget", "msg": "CardThief found no card to steal or no slot to receive it" },
+    { "code": 6025, "name": "NoUnfiredChambers", "msg": "RandomInsight found no unfired chamber to reveal" },
+    { "code": 6026, "name": "LastChanceRequiresOneHp", "msg": "LastChance is only playable when at exactly 1 HP" }
+  ],
+  "types": [
+    {
+      "name": "Card",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          { "name": "RestoreBullet" },
+          { "name": "HawkEye" },
+          { "name": "Silence" },
+          { "name": "Blocker" },
+          { "name": "BulletExtractor" },
+          { "name": "Shuffler" },
+          { "name": "DoubleStrike" },
+          { "name": "Healer" },
+          { "name": "CardThief" },
+          { "name": "RandomInsight" },
+          { "name": "LastChance" },
+          { "name": "HandOfFate" }
+        ]
+      }
+    },
+    {
+      "name": "Chamber",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          { "name": "Empty" },
+          { "name": "Blank" },
+          { "name": "Live" }
+        ]
+      }
+    },
+    {
+      "name": "MatchStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          { "name": "AwaitingOpponent" },
+          { "name": "Active" },
+          { "name": "Completed" },
+          { "name": "Abandoned" }
+        ]
+      }
+    },
+    {
+      "name": "GunState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "chambers", "type": { "array": [{ "defined": { "name": "Chamber" } }, 8] } },
+          { "name": "current_chamber", "type": "u8" },
+          { "name": "loaded_count", "type": "u8" },
+          { "name": "blank_count", "type": "u8" },
+          { "name": "shuffle_seed", "type": "u64" }
+        ]
+      }
+    },
+    {
+      "name": "CardHand",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "slots",
+            "type": { "array": [{ "option": { "defined": { "name": "Card" } } }, 4] }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerStats",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "matches_played", "type": "u32" },
+          { "name": "wins", "type": "u32" },
+          { "name": "losses", "type": "u32" },
+          { "name": "total_damage_dealt", "type": "u64" },
+          { "name": "total_rewards_claimed", "type": "u64" },
+          { "name": "elo_rating", "type": "u16" }
+        ]
+      }
+    },
+    {
+      "name": "MatchState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "match_id", "type": "u64" },
+          { "name": "player_one", "type": "pubkey" },
+          { "name": "player_two", "type": "pubkey" },
+          { "name": "player_one_hp", "type": "u8" },
+          { "name": "player_two_hp", "type": "u8" },
+          { "name": "current_turn", "type": "pubkey" },
+          { "name": "turn_number", "type": "u16" },
+          { "name": "gun", "type": { "defined": { "name": "GunState" } } },
+          { "name": "player_one_cards", "type": { "defined": { "name": "CardHand" } } },
+          { "name": "player_two_cards", "type": { "defined": { "name": "CardHand" } } },
+          { "name": "status", "type": { "defined": { "name": "MatchStatus" } } },
+          { "name": "winner", "type": { "option": "pubkey" } },
+          { "name": "silence_target", "type": { "option": "pubkey" } },
+          { "name": "blocker_active_for", "type": { "option": "pubkey" } },
+          { "name": "double_strike_for", "type": { "option": "pubkey" } },
+          { "name": "revealed_chamber", "type": { "option": "u8" } },
+          { "name": "skip_turn_for", "type": { "option": "pubkey" } },
+          { "name": "last_action_slot", "type": "u64" },
+          { "name": "started_at", "type": "i64" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "PlayerProfile",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "pubkey" },
+          { "name": "sns_domain", "type": "string" },
+          { "name": "character_nft", "type": "pubkey" },
+          { "name": "durability_remaining", "type": "u8" },
+          { "name": "durability_max", "type": "u8" },
+          { "name": "stats", "type": { "defined": { "name": "PlayerStats" } } },
+          { "name": "session_key", "type": { "option": "pubkey" } },
+          { "name": "session_key_expiry", "type": "i64" },
+          { "name": "created_at", "type": "i64" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "GameVault",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "pubkey" },
+          { "name": "reward_mint", "type": "pubkey" },
+          { "name": "treasury_ata", "type": "pubkey" },
+          { "name": "total_deposited", "type": "u64" },
+          { "name": "total_paid_out", "type": "u64" },
+          { "name": "base_reward_per_match", "type": "u64" },
+          { "name": "matches_settled", "type": "u64" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "MatchInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "match_id", "type": "u64" },
+          { "name": "seed", "type": { "array": ["u8", 32] } },
+          { "name": "first_turn", "type": "pubkey" }
+        ]
+      }
+    },
+    {
+      "name": "CardPlayed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "actor", "type": "pubkey" },
+          { "name": "card", "type": { "defined": { "name": "Card" } } },
+          { "name": "detail", "type": "u64" }
+        ]
+      }
+    },
+    {
+      "name": "TriggerPulled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "actor", "type": "pubkey" },
+          { "name": "target", "type": "pubkey" },
+          { "name": "chamber", "type": "u8" },
+          { "name": "damage", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "MatchSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "match_id", "type": "u64" },
+          { "name": "winner", "type": "pubkey" },
+          { "name": "loser", "type": "pubkey" },
+          { "name": "reward", "type": "u64" },
+          { "name": "p1_durability_remaining", "type": "u8" },
+          { "name": "p2_durability_remaining", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "ProfileCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "pubkey" },
+          { "name": "sns_domain", "type": "string" },
+          { "name": "character_nft", "type": "pubkey" }
+        ]
+      }
+    },
+    {
+      "name": "VaultInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "pubkey" },
+          { "name": "reward_mint", "type": "pubkey" },
+          { "name": "base_reward_per_match", "type": "u64" }
+        ]
+      }
+    },
+    {
+      "name": "SessionKeyRegistered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "pubkey" },
+          { "name": "session_key", "type": "pubkey" },
+          { "name": "expires_at", "type": "i64" }
+        ]
+      }
+    }
+  ]
+}
