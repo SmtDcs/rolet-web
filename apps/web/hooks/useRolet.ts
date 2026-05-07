@@ -505,54 +505,15 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
     [programL1, l1Connection]
   );
 
-  /**
-   * Push the final MatchState back to L1 once the match is over. Calls
-   * MagicBlock's commit-and-undelegate ix from inside the ER. After this
-   * confirms, the L1 PDA holds the final state and `settle_match` can run.
-   */
+  // ER delegation is blocked (§14 — MagicBlock Rust SDK dependency conflicts,
+  // no ETA). Match always runs on L1; nothing to commit or undelegate.
+  // Keeping the signature so call sites don't need touching.
   const commitAndUndelegateMatch = useCallback(
-    async (matchId: BN) => {
-      if (!wallet.publicKey || !wallet.signTransaction) {
-        emitToast("error", "Wallet not connected");
-        return null;
-      }
-      try {
-        const ix = createCommitAndUndelegateInstruction(
-          wallet.publicKey,
-          [matchPda(matchId)],
-        );
-        const tx = new Transaction().add(ix);
-        tx.feePayer = wallet.publicKey;
-        // Always use L1 blockhash — ER endpoint hashes are unrecognized by
-        // Solflare's cluster validator and trigger "Network mismatch" before
-        // the tx is even signed. The ER accepts L1 hashes just fine.
-        tx.recentBlockhash = (await l1Connection.getLatestBlockhash()).blockhash;
-        const signed = await wallet.signTransaction(tx);
-        const sig = await connection.sendRawTransaction(signed.serialize());
-        await connection.confirmTransaction(sig, "confirmed");
-        emitToast("success", `Match committed back to L1 · ${sig.slice(0, 6)}…`);
-        return sig;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        // L1-only path (PLAN_B): ER ix tries to write a non-delegated account.
-        // "Network mismatch" = Solflare rejected the ER-endpoint blockhash
-        // before signing — treat same as L1-only since the match was never
-        // delegated anyway.
-        if (
-          msg.includes("read-only") ||
-          msg.includes("ProgramAccountNotFound") ||
-          msg.includes("invalid program") ||
-          msg.includes("Network mismatch") ||
-          msg.includes("network mismatch")
-        ) {
-          emitToast("info", "Match was L1-only; no commit needed");
-          return null;
-        }
-        emitToast("error", `commit_and_undelegate failed · ${msg}`);
-        return null;
-      }
+    async (_matchId: BN) => {
+      emitToast("info", "Match was L1-only; no commit needed");
+      return null;
     },
-    [wallet, connection]
+    []
   );
 
   const initMatch = useCallback(
