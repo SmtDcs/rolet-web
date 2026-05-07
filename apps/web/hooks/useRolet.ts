@@ -523,9 +523,10 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
         );
         const tx = new Transaction().add(ix);
         tx.feePayer = wallet.publicKey;
-        // This ix runs inside the ER, so we send via the active connection
-        // (which is the ER endpoint when ephemeral=true).
-        tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+        // Always use L1 blockhash — ER endpoint hashes are unrecognized by
+        // Solflare's cluster validator and trigger "Network mismatch" before
+        // the tx is even signed. The ER accepts L1 hashes just fine.
+        tx.recentBlockhash = (await l1Connection.getLatestBlockhash()).blockhash;
         const signed = await wallet.signTransaction(tx);
         const sig = await connection.sendRawTransaction(signed.serialize());
         await connection.confirmTransaction(sig, "confirmed");
@@ -533,12 +534,16 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
         return sig;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        // If the match was never delegated (PLAN_B path), the ER ix tries
-        // to write a read-only L1 account → silent skip is correct.
+        // L1-only path (PLAN_B): ER ix tries to write a non-delegated account.
+        // "Network mismatch" = Solflare rejected the ER-endpoint blockhash
+        // before signing — treat same as L1-only since the match was never
+        // delegated anyway.
         if (
           msg.includes("read-only") ||
           msg.includes("ProgramAccountNotFound") ||
-          msg.includes("invalid program")
+          msg.includes("invalid program") ||
+          msg.includes("Network mismatch") ||
+          msg.includes("network mismatch")
         ) {
           emitToast("info", "Match was L1-only; no commit needed");
           return null;
