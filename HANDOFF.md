@@ -454,3 +454,151 @@ The fastest path to a hackathon-shippable demo:
 - Record a screencast showing: Connect → Profile → Match → Arm → Several gasless turns → Win → Settle → Reward in wallet
 
 Good luck. The architecture is sound; the remaining work is integration polish.
+
+---
+
+## 14. Lessons Learned (2026-05) — READ BEFORE TOUCHING ER
+
+This section captures hard-won knowledge from the failed `feature/er-delegation`
+branch and the live demo run. **Future AI sessions: read this before starting
+any related work.** Saves several hours of dead ends.
+
+### 14.1 ER delegation is BLOCKED — do not retry without a fix from MagicBlock
+
+We attempted real MagicBlock ER delegation in `feature/er-delegation` branch.
+Multiple combos failed with the **same root cause**: the `ephemeral-rollups-sdk`
+crate has internal `solana-pubkey` / `solana-program` version fragmentation
+that no Anchor version unifies.
+
+| Combo tried                                | Failure mode                                          |
+|--------------------------------------------|-------------------------------------------------------|
+| Anchor 0.30.1 + SDK 0.11.2                 | `Address vs Pubkey` 16× E0308 (dlp_api split)         |
+| Anchor 0.30.1 + SDK 0.12.0                 | Same                                                  |
+| Anchor 0.30.1 + SDK 0.13.0                 | Same                                                  |
+| Anchor 0.31.1 + SDK 0.13.0                 | `as_array()` not found on Pubkey                      |
+| Anchor 0.31.1 + SDK 0.11.2                 | `__Pubkey vs magicblock_magic_program_api::Pubkey`    |
+| Anchor 0.32.1 + SDK 0.11.2 (skill recommends) | Same `__Pubkey` mismatch                            |
+| Anchor 0.32.1 + SDK 0.13.0                 | Same                                                  |
+| **Manual CPI (no SDK)** validator: None    | `Invalid account owner` from delegation program      |
+| **Manual CPI (no SDK)** validator: DEFAULT | Same                                                  |
+
+The manual CPI route requires `#[ephemeral]` macro runtime hooks — those are
+inside the SDK. So no SDK = no delegation. Confirmed by the official MagicBlock
+dev skill (`/tmp/magicblock-dev-skill/skill/delegation.md`) which insists on
+`ephemeral-rollups-sdk` 0.11.2 + Anchor 0.32.1 — but we proved that combo
+**doesn't actually compile** in 2026-05.
+
+**Verdict:** ER delegation is blocked on **MagicBlock fixing their crate
+dependency tree**. Likely needs Discord support / GitHub issue. Do NOT spend
+more cycles trying random version combos. The TS SDK is fine and stays
+installed; only the Rust side is broken.
+
+When MagicBlock ships a clean SDK, the work is straightforward (~2-3 hrs):
+- Add `ephemeral-rollups-sdk` dep
+- Add `#[ephemeral]` to `mod rolet`
+- Add `#[delegate]` to `DelegateMatchState` context
+- Replace `delegateMatch()` no-op stub with real call to rolet's new ix
+- Add `commitAndUndelegate` via `MagicIntentBundleBuilder` in pull_trigger
+- See `feature/er-delegation` branch for the half-finished code (don't merge,
+  use as reference).
+
+### 14.2 Operational gotchas
+
+- **`gh` CLI requires sudo** (not pre-installed). User must install themselves.
+- **Phantom on devnet:** Settings → Developer → Custom RPC → `http://127.0.0.1:8899`
+  for localnet OR pick "Devnet" for mainnet-style. The wallet's address is the
+  same on every cluster but balances are separate.
+- **Helius free tier blocks WebSocket.** `Connection._wsOnError` shows up in
+  Next 16 dev devtools as a red error overlay. Harmless — HTTP polling
+  fallback every 1.5s in `ActiveDuel` covers state updates. To suppress
+  visually, run `pnpm build && pnpm start` instead of `pnpm dev`. Do NOT
+  rewrite `confirmTransaction` — the noise is cosmetic.
+- **`git checkout v0.1-working-demo` does NOT cleanly restore Cargo.lock.**
+  Expect minor solve drift on next `cargo build`. Cosmetic, ignore.
+- **`anchor deploy` is BROKEN.** Use `solana program deploy ...` directly with
+  `--url` flag. Anchor's deploy command tries to rebuild IDL → hits
+  `proc_macro2::Span::source_file` bug.
+- **`anchor build --no-idl` is mandatory.** Same proc_macro2 bug fires
+  without `--no-idl`.
+
+### 14.3 Wallet identity model
+
+- **CLI wallet** (`~/.config/solana/id.json` → `9uJcwroPnjEAZPEv5nMuWX2df6vGptNUC2aGaNV6Pw2o`):
+  - Funded from user's Phantom transfer (5 SOL, then 1 SOL more)
+  - Pays for program deploy + vault bootstrap
+  - **Owns program upgrade authority** — DO NOT LOSE this keypair
+  - Backed up to `~/.rolet-checkpoint-v0.1/`
+- **User's Phantom wallet** (different pubkey, on devnet):
+  - The actual player
+  - Holds the 1 $ROLET they won
+  - Has session keys cached in localStorage
+  - User must keep ~0.05 SOL in it for popups + funding
+
+### 14.4 Active runtime decisions (in code, may be tuned)
+
+| Decision                  | Where                                  | Value             |
+|---------------------------|----------------------------------------|-------------------|
+| Ghost AI target ratio     | `app/duel/page.tsx` `useEffect`        | 30% self / 70% you|
+| Ghost "thinking" delay    | Same                                   | 1500 ms           |
+| Polling interval          | `app/duel/page.tsx` `setInterval`      | 1500 ms           |
+| Session duration max      | `lib.rs` `register_session_key`        | 24 hours          |
+| Session SOL fund          | `useRolet.ts` `startSession`           | 0.005 SOL         |
+| Ghost SOL fund (lobby)    | `useRolet.ts` `setupGhost`             | 0.02 SOL          |
+| Starting HP               | `lib.rs` `STARTING_HP`                 | 4                 |
+| Chamber load              | `lib.rs` constants                     | 5 Live + 3 Blank  |
+| Reward per win            | bootstrap script                       | 1 $ROLET (10^6)   |
+| Initial treasury          | bootstrap script                       | 1000 $ROLET       |
+
+### 14.5 Currently deployed program has dead code
+
+The devnet binary (program `2ePEUz...`) was last deployed during the
+`feature/er-delegation` branch. It contains the `delegate_match_state` ix
+that frontend never calls. Harmless dead weight but worth knowing if
+debugging program logs.
+
+To re-deploy a clean binary (matches current main branch source exactly):
+
+```bash
+cd apps/server
+rm -f Cargo.lock && anchor build --no-idl
+solana program deploy target/deploy/rolet.so \
+  --program-id target/deploy/rolet-keypair.json \
+  --url https://api.devnet.solana.com
+```
+
+But this is optional — the dead ix is unreachable from the frontend.
+
+### 14.6 What's been demo-tested end-to-end on devnet
+
+- Profile enrollment ✓
+- Lobby create + ghost setup ✓
+- Match init with commit-reveal RNG ✓
+- Session key arming + 0.005 SOL fund ✓
+- Popup-less trigger pulls (3+ verified) ✓
+- Ghost auto-play (multiple turns) ✓
+- Card playing: Shuffler, LastChance (1HP gate works), DoubleStrike ✓
+- Match completion (HP→0) ✓
+- Settle + reward transfer (1 $ROLET in wallet) ✓
+- Treasury accounting (999/1000 + matches_settled=1) ✓
+
+NOT yet demo-tested:
+- 6 stub cards: RestoreBullet, Shuffler, CardThief, RandomInsight, HandOfFate
+  (Shuffler IS implemented per logs, just RestoreBullet/etc untested)
+- Real 2-player flow (only ghost so far)
+- Multiple matches in same session
+- Session key expiry handling
+
+### 14.7 Brief for the next AI session
+
+When resuming, the user will say something like:
+> "ROLET projesi, ROADMAP'te <X> branch'i, başla."
+
+Read in this order:
+1. `README.md` (top-level)
+2. `ROADMAP.md` (what to do, kuralset)
+3. This section (§14, what NOT to do)
+4. `CHECKPOINT-v0.1.md` (current frozen state)
+5. Only if needed: full HANDOFF.md (architecture detail)
+
+Then start the requested branch. Don't re-explain the project to the user;
+they know it. Match their context level.
