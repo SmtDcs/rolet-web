@@ -160,25 +160,33 @@ function DuelLoading() {
 }
 
 /**
- * Reads the `match` query param from the URL.
- * - Missing → renders the lobby (create-match CTA)
- * - Present → parses to BN and renders the active duel
+ * Reads URL params:
+ *  ?match=<hex>  → ActiveDuel
+ *  ?lobby=<hex>  → HostWaiting (host polling for guest)
+ *  ?join=<hex>   → GuestLobby (guest joins + waits for host to launch)
+ *  (none)        → CreateMatch
  */
 function DuelRouter() {
   const search = useSearchParams();
   const matchHex = search.get("match");
+  const lobbyHex = search.get("lobby");
+  const joinHex = search.get("join");
 
   const matchId = useMemo(() => {
     if (!matchHex) return null;
-    try {
-      return new BN(matchHex, 16);
-    } catch {
-      return null;
-    }
+    try { return new BN(matchHex, 16); } catch { return null; }
   }, [matchHex]);
 
-  if (!matchId) return <Lobby />;
-  return <ActiveDuel matchId={matchId} />;
+  const lobbyMatchId = useMemo(() => {
+    const hex = lobbyHex ?? joinHex;
+    if (!hex) return null;
+    try { return new BN(hex, 16); } catch { return null; }
+  }, [lobbyHex, joinHex]);
+
+  if (matchId) return <ActiveDuel matchId={matchId} />;
+  if (lobbyMatchId && lobbyHex) return <HostWaiting matchId={lobbyMatchId} />;
+  if (lobbyMatchId && joinHex) return <GuestLobby matchId={lobbyMatchId} />;
+  return <Lobby />;
 }
 
 // ============================================================
@@ -1059,86 +1067,19 @@ function TargetButton({
 }
 
 // ============================================================
-// LOBBY — create-match CTA. Until real matchmaking exists, the
-// "opponent" is a ghost keypair we generate locally and stash, so
-// init_match's commit-reveal can succeed end-to-end on chain.
+// Shared lobby background + nav bar
 // ============================================================
-function Lobby() {
-  const router = useRouter();
-  const wallet = useWallet();
-  const rolet = useRolet({ ephemeral: false }); // L1 for init_match
-  const toasts = useToasts();
-  const [busy, setBusy] = useState(false);
-
-  // Profile gate: settle_match needs a PlayerProfile PDA — block matchmaking
-  // until the user has enrolled.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [profile, setProfile] = useState<any | null | undefined>(undefined);
-  useEffect(() => {
-    if (!rolet.program || !wallet.publicKey) {
-      setProfile(undefined);
-      return;
-    }
-    let alive = true;
-    (async () => {
-      const p = await rolet.fetchProfile();
-      if (alive) setProfile(p);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [rolet, wallet.publicKey]);
-
-  const handleCreate = useCallback(async () => {
-    if (!wallet.publicKey) return;
-    if (!profile) {
-      router.push("/profile");
-      return;
-    }
-    setBusy(true);
-    try {
-      // Random u64 match id.
-      const idBytes = new Uint8Array(8);
-      crypto.getRandomValues(idBytes);
-      const matchId = new BN(idBytes);
-      const matchHex = matchId.toString(16);
-
-      // Ghost opponent keypair — represents the second seat until real
-      // matchmaking exists. Stash so we can replay/finish later.
-      const ghost = Keypair.generate();
-      const ghostSecret = new Uint8Array(32);
-      crypto.getRandomValues(ghostSecret);
-      const ghostCommit = keccak_256(ghostSecret);
-
-      window.localStorage.setItem(
-        `rolet:ghost:${matchHex}`,
-        JSON.stringify({
-          pubkey: ghost.publicKey.toBase58(),
-          keypair: Array.from(ghost.secretKey),
-          secret: Array.from(ghostSecret),
-        })
-      );
-
-      // Setup the ghost FIRST (fund + init profile) so when its turn comes
-      // around in-match, pull_trigger can find a valid PlayerProfile PDA.
-      await rolet.setupGhost(ghost, `ghost-${matchHex.slice(0, 6)}.dev`);
-
-      const sig = await rolet.initMatch({
-        matchId,
-        opponent: ghost.publicKey,
-        opponentCommit: ghostCommit,
-        opponentSecret: ghostSecret,
-      });
-
-      if (sig) {
-        await rolet.delegateMatch(matchId);
-        router.replace(`/duel?match=${matchHex}`);
-      }
-    } finally {
-      setBusy(false);
-    }
-  }, [router, rolet, wallet.publicKey]);
-
+function LobbyShell({
+  subtitle,
+  statusTag,
+  children,
+  toasts,
+}: {
+  subtitle: string;
+  statusTag: string;
+  children: React.ReactNode;
+  toasts: ReturnType<typeof useToasts>;
+}) {
   return (
     <main className="relative min-h-screen overflow-hidden">
       <div
@@ -1148,105 +1089,317 @@ function Lobby() {
             "radial-gradient(ellipse at 50% 30%, rgba(80, 35, 15, 0.35) 0%, rgba(10, 6, 4, 1) 65%), #050302",
         }}
       />
-
       <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between px-6 py-4 border-b border-rust/40 bg-black/40 backdrop-blur-sm">
-        <Link
-          href="/"
-          className="text-[10px] tracking-[0.4em] text-rust hover:text-red-500"
-        >
+        <Link href="/" className="text-[10px] tracking-[0.4em] text-rust hover:text-red-500">
           ◄ BACK
         </Link>
-        <span className="text-[10px] tracking-[0.4em] text-zinc-600">
-          LOBBY · NO MATCH BOUND
-        </span>
-        <span className="text-[10px] tracking-[0.4em] text-rust">// IDLE</span>
+        <span className="text-[10px] tracking-[0.4em] text-zinc-600">{subtitle}</span>
+        <span className="text-[10px] tracking-[0.4em] text-rust">{statusTag}</span>
+      </div>
+      <div className="relative mx-auto flex min-h-screen max-w-3xl flex-col items-center justify-center px-6 py-24 text-center">
+        {children}
+      </div>
+      {toasts.length > 0 && (
+        <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none">
+          {toasts.map((t) => (
+            <div
+              key={t.id}
+              className={`border px-4 py-2 bg-black/80 text-[10px] tracking-[0.3em] backdrop-blur-sm ${
+                t.level === "error"
+                  ? "border-red-700 text-red-400"
+                  : t.level === "success"
+                  ? "border-rust text-red-300"
+                  : "border-zinc-700 text-zinc-400"
+              }`}
+            >
+              {t.level === "error" ? "!! " : t.level === "success" ? ">> " : ".. "}
+              {t.message}
+            </div>
+          ))}
+        </div>
+      )}
+    </main>
+  );
+}
+
+// ============================================================
+// LOBBY — create-match CTA (opens a LobbyState PDA, share link)
+// ============================================================
+function Lobby() {
+  const router = useRouter();
+  const wallet = useWallet();
+  const rolet = useRolet({ ephemeral: false });
+  const toasts = useToasts();
+  const [busy, setBusy] = useState(false);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [profile, setProfile] = useState<any | null | undefined>(undefined);
+  useEffect(() => {
+    if (!rolet.program || !wallet.publicKey) { setProfile(undefined); return; }
+    let alive = true;
+    (async () => { const p = await rolet.fetchProfile(); if (alive) setProfile(p); })();
+    return () => { alive = false; };
+  }, [rolet, wallet.publicKey]);
+
+  const handleCreate = useCallback(async () => {
+    if (!wallet.publicKey || !profile) { router.push("/profile"); return; }
+    setBusy(true);
+    try {
+      const idBytes = new Uint8Array(8);
+      crypto.getRandomValues(idBytes);
+      const matchId = new BN(idBytes);
+      const matchHex = matchId.toString(16);
+
+      const { secret, commit } = rolet.generateCommitReveal();
+      // Stash in the same key that initMatch's recallSecret reads
+      window.sessionStorage.setItem(
+        `rolet:secret:${matchId.toString()}`,
+        Buffer.from(secret).toString("hex")
+      );
+
+      const sig = await rolet.openLobby(matchId, commit);
+      if (sig) router.replace(`/duel?lobby=${matchHex}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [router, rolet, wallet.publicKey, profile]);
+
+  return (
+    <LobbyShell subtitle="LOBBY · NO MATCH BOUND" statusTag="// IDLE" toasts={toasts}>
+      <span className="text-[10px] tracking-[0.6em] text-zinc-600 mb-4">
+        // CHAMBER UNLOADED — NO ACTIVE PROTOCOL
+      </span>
+
+      <h1 className="font-display text-bleed leading-none select-none" style={{ fontSize: "clamp(3rem, 9vw, 7rem)" }}>
+        NEW DUEL
+      </h1>
+
+      <p className="mt-4 max-w-xl text-sm tracking-[0.2em] text-zinc-500 uppercase">
+        Open a lobby on-chain. Share the link with your opponent — the match
+        seeds itself once both wallets commit.
+      </p>
+
+      <div className="mt-3 flex items-center gap-3 text-[10px] tracking-[0.4em] text-rust">
+        <span className="h-px w-12 bg-rust" />
+        REAL 2-PLAYER · LOBBY PDA
+        <span className="h-px w-12 bg-rust" />
       </div>
 
-      <div className="relative mx-auto flex min-h-screen max-w-3xl flex-col items-center justify-center px-6 py-24 text-center">
-        <span className="text-[10px] tracking-[0.6em] text-zinc-600 mb-4">
-          // CHAMBER UNLOADED — NO ACTIVE PROTOCOL
-        </span>
+      <div className="mt-12 flex flex-col items-center gap-3">
+        {wallet.connected && profile === null ? (
+          <Link
+            href="/profile"
+            className="border-2 border-rust bg-gradient-to-b from-[#1a0e08] to-black px-10 py-5 font-display tracking-[0.4em] text-xl text-rust hover:text-red-400 hover:border-red-700 transition-all"
+          >
+            ▼ SETUP PROFILE FIRST ▼
+            <div className="mt-1 text-[8px] tracking-[0.5em] text-zinc-700">
+              no PlayerProfile PDA found · settle_match would fail
+            </div>
+          </Link>
+        ) : (
+          <button
+            onClick={handleCreate}
+            disabled={!wallet.connected || busy || rolet.busy || !rolet.program || profile === undefined}
+            className="border-2 border-red-600 bg-gradient-to-b from-red-950/60 to-black px-10 py-5 font-display tracking-[0.4em] text-xl text-red-400 text-bleed animate-blood transition-all hover:text-red-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:animate-none"
+          >
+            {busy || rolet.busy ? "▼ OPENING…" : "▼ CREATE LOBBY ▼"}
+            <div className="mt-1 text-[8px] tracking-[0.5em] text-rust">
+              {wallet.connected
+                ? profile === undefined ? "checking profile…" : "signs open_lobby tx"
+                : "wallet not connected"}
+            </div>
+          </button>
+        )}
 
-        <h1
-          className="font-display text-bleed leading-none select-none"
-          style={{ fontSize: "clamp(3rem, 9vw, 7rem)" }}
-        >
-          NEW DUEL
-        </h1>
-
-        <p className="mt-4 max-w-xl text-sm tracking-[0.2em] text-zinc-500 uppercase">
-          Seed a match on-chain. The cylinder will be shuffled with
-          commit-reveal entropy and four cards dealt to each seat.
-        </p>
-
-        <div className="mt-3 flex items-center gap-3 text-[10px] tracking-[0.4em] text-rust">
-          <span className="h-px w-12 bg-rust" />
-          DEV MODE · GHOST OPPONENT
-          <span className="h-px w-12 bg-rust" />
-        </div>
-
-        <div className="mt-12 flex flex-col items-center gap-3">
-          {wallet.connected && profile === null ? (
-            <Link
-              href="/profile"
-              className="group relative border-2 border-rust bg-gradient-to-b from-[#1a0e08] to-black px-10 py-5 font-display tracking-[0.4em] text-xl text-rust hover:text-red-400 hover:border-red-700 transition-all"
-            >
-              ▼ SETUP PROFILE FIRST ▼
-              <div className="mt-1 text-[8px] tracking-[0.5em] text-zinc-700">
-                no PlayerProfile PDA found · settle_match would fail
-              </div>
-            </Link>
-          ) : (
-            <button
-              onClick={handleCreate}
-              disabled={
-                !wallet.connected ||
-                busy ||
-                rolet.busy ||
-                !rolet.program ||
-                profile === undefined
-              }
-              className="group relative border-2 border-red-600 bg-gradient-to-b from-red-950/60 to-black px-10 py-5 font-display tracking-[0.4em] text-xl text-red-400 text-bleed animate-blood transition-all hover:text-red-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:animate-none"
-            >
-              {busy || rolet.busy ? "▼ SEEDING…" : "▼ CREATE MATCH ▼"}
-              <div className="mt-1 text-[8px] tracking-[0.5em] text-rust">
-                {wallet.connected
-                  ? profile === undefined
-                    ? "checking profile…"
-                    : "this will sign + send init_match"
-                  : "wallet not connected"}
-              </div>
-            </button>
-          )}
-
-          {!wallet.connected && (
-            <span className="text-[10px] tracking-[0.4em] text-rust mt-2">
-              // CONNECT A WALLET FROM THE NAV BAR
-            </span>
-          )}
-        </div>
-
-        {/* Floating toast stack — same style as ActiveDuel */}
-        {toasts.length > 0 && (
-          <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none">
-            {toasts.map((t) => (
-              <div
-                key={t.id}
-                className={`border px-4 py-2 bg-black/80 text-[10px] tracking-[0.3em] backdrop-blur-sm ${
-                  t.level === "error"
-                    ? "border-red-700 text-red-400"
-                    : t.level === "success"
-                    ? "border-rust text-red-300"
-                    : "border-zinc-700 text-zinc-400"
-                }`}
-              >
-                {t.level === "error" ? "!! " : t.level === "success" ? ">> " : ".. "}
-                {t.message}
-              </div>
-            ))}
-          </div>
+        {!wallet.connected && (
+          <span className="text-[10px] tracking-[0.4em] text-rust mt-2">
+            // CONNECT A WALLET FROM THE NAV BAR
+          </span>
         )}
       </div>
-    </main>
+    </LobbyShell>
+  );
+}
+
+// ============================================================
+// HOST WAITING — polls lobby, shows shareable link, launches match
+// ============================================================
+function HostWaiting({ matchId }: { matchId: BN }) {
+  const router = useRouter();
+  const wallet = useWallet();
+  const rolet = useRolet({ ephemeral: false });
+  const toasts = useToasts();
+  const matchHex = matchId.toString(16);
+  const [lobby, setLobby] = useState<any>(null);  // eslint-disable-line @typescript-eslint/no-explicit-any
+  const [launching, setLaunching] = useState(false);
+  const joinUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/duel?join=${matchHex}`
+    : `/duel?join=${matchHex}`;
+
+  // Poll lobby every 1.5s for guest
+  useEffect(() => {
+    if (!rolet.program) return;
+    let alive = true;
+    const poll = setInterval(async () => {
+      const l = await rolet.fetchLobby(matchId);
+      if (alive) setLobby(l);
+    }, 1500);
+    rolet.fetchLobby(matchId).then((l) => { if (alive) setLobby(l); });
+    return () => { alive = false; clearInterval(poll); };
+  }, [rolet, matchId]);
+
+  const guestReady = !!lobby?.guest;
+
+  const handleLaunch = useCallback(async () => {
+    if (!wallet.publicKey || !lobby) return;
+    setLaunching(true);
+    try {
+      const guestPk = lobby.guest as PublicKey;
+      // initMatch reads host secret via recallSecret(matchId.toString()),
+      // which was stashed by Lobby when open_lobby was called.
+      const sig = await rolet.initMatch({
+        matchId,
+        opponent: guestPk,
+        opponentCommit: Uint8Array.from(lobby.guestCommit),
+        opponentSecret: Uint8Array.from(lobby.guestSecret),
+      });
+      if (sig) {
+        await rolet.delegateMatch(matchId);
+        await rolet.closeLobby(matchId);
+        router.replace(`/duel?match=${matchHex}`);
+      }
+    } finally {
+      setLaunching(false);
+    }
+  }, [wallet.publicKey, lobby, matchHex, matchId, rolet, router]);
+
+  return (
+    <LobbyShell subtitle={`LOBBY · 0x${matchHex.toUpperCase()}`} statusTag={guestReady ? "// GUEST READY" : "// WAITING"} toasts={toasts}>
+      <span className="text-[10px] tracking-[0.6em] text-zinc-600 mb-4">
+        // LOBBY OPEN — WAITING FOR SECOND PLAYER
+      </span>
+
+      <h1 className="font-display text-bleed leading-none select-none" style={{ fontSize: "clamp(2rem, 7vw, 5rem)" }}>
+        SHARE LINK
+      </h1>
+
+      <div className="mt-8 w-full max-w-xl border border-rust/60 bg-black/70 p-4 text-left">
+        <div className="text-[9px] tracking-[0.4em] text-rust mb-2">// INVITE URL</div>
+        <div className="flex items-center gap-3">
+          <code className="flex-1 text-[11px] text-zinc-300 break-all">{joinUrl}</code>
+          <button
+            onClick={() => navigator.clipboard.writeText(joinUrl)}
+            className="shrink-0 border border-rust/60 px-3 py-1 text-[10px] tracking-[0.3em] text-rust hover:border-red-600 hover:text-red-400"
+          >
+            COPY
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-6 flex items-center gap-4">
+        <div className={`h-2 w-2 rounded-full ${guestReady ? "bg-red-500 shadow-[0_0_8px_rgba(220,30,30,0.8)]" : "bg-zinc-700"} animate-pulse`} />
+        <span className="text-[10px] tracking-[0.4em] text-zinc-500">
+          {guestReady
+            ? `OPPONENT JOINED · ${(lobby.guest as PublicKey).toBase58().slice(0, 8)}…`
+            : "waiting for opponent wallet…"}
+        </span>
+      </div>
+
+      <button
+        onClick={handleLaunch}
+        disabled={!guestReady || launching || rolet.busy}
+        className="mt-8 border-2 border-red-600 bg-gradient-to-b from-red-950/60 to-black px-10 py-5 font-display tracking-[0.4em] text-xl text-red-400 text-bleed animate-blood transition-all hover:text-red-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:animate-none"
+      >
+        {launching || rolet.busy ? "▼ LAUNCHING…" : "▼ LAUNCH MATCH ▼"}
+        <div className="mt-1 text-[8px] tracking-[0.5em] text-rust">
+          {guestReady ? "signs init_match · seals both commits" : "disabled until opponent joins"}
+        </div>
+      </button>
+    </LobbyShell>
+  );
+}
+
+// ============================================================
+// GUEST LOBBY — joins lobby, then polls for match to appear
+// ============================================================
+function GuestLobby({ matchId }: { matchId: BN }) {
+  const router = useRouter();
+  const wallet = useWallet();
+  const rolet = useRolet({ ephemeral: false });
+  const toasts = useToasts();
+  const matchHex = matchId.toString(16);
+  const [joined, setJoined] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  // After joining, poll for MatchState to appear (host calls init_match)
+  useEffect(() => {
+    if (!joined || !rolet.program) return;
+    let alive = true;
+    const poll = setInterval(async () => {
+      const m = await rolet.fetchMatch(matchId);
+      if (alive && m) {
+        clearInterval(poll);
+        router.replace(`/duel?match=${matchHex}`);
+      }
+    }, 1500);
+    return () => { alive = false; clearInterval(poll); };
+  }, [joined, rolet, matchId, matchHex, router]);
+
+  const handleJoin = useCallback(async () => {
+    if (!wallet.publicKey) return;
+    setBusy(true);
+    try {
+      const { secret, commit } = rolet.generateCommitReveal();
+      const sig = await rolet.joinLobby(matchId, commit, secret);
+      if (sig) setJoined(true);
+    } finally {
+      setBusy(false);
+    }
+  }, [wallet.publicKey, rolet, matchId]);
+
+  return (
+    <LobbyShell subtitle={`JOIN · 0x${matchHex.toUpperCase()}`} statusTag={joined ? "// JOINED" : "// STANDBY"} toasts={toasts}>
+      <span className="text-[10px] tracking-[0.6em] text-zinc-600 mb-4">
+        // LOBBY INVITE RECEIVED
+      </span>
+
+      <h1 className="font-display text-bleed leading-none select-none" style={{ fontSize: "clamp(2rem, 7vw, 5rem)" }}>
+        {joined ? "WAITING…" : "JOIN DUEL"}
+      </h1>
+
+      <p className="mt-4 max-w-xl text-sm tracking-[0.2em] text-zinc-500 uppercase">
+        {joined
+          ? "Your commit is on-chain. Waiting for the host to launch the match…"
+          : "Click below to generate a commit-reveal pair and join the lobby."}
+      </p>
+
+      {!joined && (
+        <button
+          onClick={handleJoin}
+          disabled={!wallet.connected || busy || rolet.busy}
+          className="mt-12 border-2 border-red-600 bg-gradient-to-b from-red-950/60 to-black px-10 py-5 font-display tracking-[0.4em] text-xl text-red-400 text-bleed animate-blood transition-all hover:text-red-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:animate-none"
+        >
+          {busy || rolet.busy ? "▼ JOINING…" : "▼ JOIN LOBBY ▼"}
+          <div className="mt-1 text-[8px] tracking-[0.5em] text-rust">
+            {wallet.connected ? "signs join_lobby tx" : "connect wallet first"}
+          </div>
+        </button>
+      )}
+
+      {joined && (
+        <div className="mt-12 flex items-center gap-4">
+          <div className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(220,30,30,0.8)] animate-pulse" />
+          <span className="text-[10px] tracking-[0.4em] text-zinc-500">
+            polling for match · host must click launch match…
+          </span>
+        </div>
+      )}
+
+      {!wallet.connected && (
+        <span className="text-[10px] tracking-[0.4em] text-rust mt-8">
+          // CONNECT A WALLET FROM THE NAV BAR
+        </span>
+      )}
+    </LobbyShell>
   );
 }

@@ -618,6 +618,62 @@ pub mod rolet {
         });
         Ok(())
     }
+
+    // --------------------------------------------------------
+    // OPEN_LOBBY — host creates a waiting room PDA
+    // --------------------------------------------------------
+    pub fn open_lobby(
+        ctx: Context<OpenLobby>,
+        match_id: u64,
+        host_commit: [u8; 32],
+    ) -> Result<()> {
+        let lobby = &mut ctx.accounts.lobby;
+        lobby.match_id = match_id;
+        lobby.host = ctx.accounts.host.key();
+        lobby.host_commit = host_commit;
+        lobby.guest = None;
+        lobby.guest_commit = [0u8; 32];
+        lobby.guest_secret = [0u8; 32];
+        lobby.bump = ctx.bumps.lobby;
+        emit!(LobbyOpened { match_id, host: lobby.host });
+        Ok(())
+    }
+
+    // --------------------------------------------------------
+    // JOIN_LOBBY — guest fills the second seat
+    // --------------------------------------------------------
+    pub fn join_lobby(
+        ctx: Context<JoinLobby>,
+        guest_commit: [u8; 32],
+        guest_secret: [u8; 32],
+    ) -> Result<()> {
+        require!(
+            keccak::hash(&guest_secret).0 == guest_commit,
+            RoletError::InvalidReveal
+        );
+        let lobby = &mut ctx.accounts.lobby;
+        require!(lobby.guest.is_none(), RoletError::LobbyFull);
+        require!(
+            ctx.accounts.guest.key() != lobby.host,
+            RoletError::CannotSelfMatch
+        );
+        lobby.guest = Some(ctx.accounts.guest.key());
+        lobby.guest_commit = guest_commit;
+        lobby.guest_secret = guest_secret;
+        emit!(LobbyReady {
+            match_id: lobby.match_id,
+            host: lobby.host,
+            guest: ctx.accounts.guest.key(),
+        });
+        Ok(())
+    }
+
+    // --------------------------------------------------------
+    // CLOSE_LOBBY — host reclaims rent after match is launched
+    // --------------------------------------------------------
+    pub fn close_lobby(_ctx: Context<CloseLobby>) -> Result<()> {
+        Ok(())
+    }
 }
 
 // ============================================================
@@ -746,6 +802,21 @@ pub struct GameVault {
     pub total_paid_out: u64,
     pub base_reward_per_match: u64,
     pub matches_settled: u64,
+    pub bump: u8,
+}
+
+// ============================================================
+// LOBBY STATE (L1, temporary — closed after match launches)
+// ============================================================
+#[account]
+#[derive(InitSpace)]
+pub struct LobbyState {
+    pub match_id: u64,
+    pub host: Pubkey,
+    pub host_commit: [u8; 32],
+    pub guest: Option<Pubkey>,
+    pub guest_commit: [u8; 32],
+    pub guest_secret: [u8; 32],
     pub bump: u8,
 }
 
@@ -996,6 +1067,47 @@ pub struct RegisterSessionKey<'info> {
 // PLAN_B: DelegateMatchState / UndelegateMatchState moved to client.
 
 #[derive(Accounts)]
+#[instruction(match_id: u64)]
+pub struct OpenLobby<'info> {
+    #[account(
+        init,
+        payer = host,
+        space = 8 + LobbyState::INIT_SPACE,
+        seeds = [b"lobby", match_id.to_le_bytes().as_ref()],
+        bump,
+    )]
+    pub lobby: Account<'info, LobbyState>,
+    #[account(mut)]
+    pub host: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct JoinLobby<'info> {
+    #[account(
+        mut,
+        seeds = [b"lobby", lobby.match_id.to_le_bytes().as_ref()],
+        bump = lobby.bump,
+    )]
+    pub lobby: Account<'info, LobbyState>,
+    pub guest: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct CloseLobby<'info> {
+    #[account(
+        mut,
+        seeds = [b"lobby", lobby.match_id.to_le_bytes().as_ref()],
+        bump = lobby.bump,
+        has_one = host,
+        close = host,
+    )]
+    pub lobby: Account<'info, LobbyState>,
+    #[account(mut)]
+    pub host: Signer<'info>,
+}
+
+#[derive(Accounts)]
 pub struct InitVault<'info> {
     #[account(
         init,
@@ -1080,6 +1192,19 @@ pub struct SessionKeyRegistered {
     pub expires_at: i64,
 }
 
+#[event]
+pub struct LobbyOpened {
+    pub match_id: u64,
+    pub host: Pubkey,
+}
+
+#[event]
+pub struct LobbyReady {
+    pub match_id: u64,
+    pub host: Pubkey,
+    pub guest: Pubkey,
+}
+
 // ============================================================
 // Errors
 // ============================================================
@@ -1139,4 +1264,8 @@ pub enum RoletError {
     NoUnfiredChambers,
     #[msg("LastChance is only playable when at exactly 1 HP")]
     LastChanceRequiresOneHp,
+    #[msg("Lobby already has a guest")]
+    LobbyFull,
+    #[msg("Host cannot join their own lobby")]
+    CannotSelfMatch,
 }
