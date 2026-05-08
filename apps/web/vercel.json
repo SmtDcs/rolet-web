@@ -1,5 +1,5 @@
 {
-  "installCommand": "npx --yes pnpm@10.33.2 install --frozen-lockfile",
+  "installCommand": "npx --yes pnpm@10.33.2 install --no-frozen-lockfile",
   "buildCommand": "next build",
   "outputDirectory": ".next",
   "framework": "nextjs"
