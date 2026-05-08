@@ -4,7 +4,7 @@
 > cards, session-key gasless turns, real 2-player matchmaking via on-chain
 > Lobby PDA. One winner claims `$ROLET`.
 
-**Live demo:** `https://YOUR_VERCEL_URL` (Solana Devnet)  
+**Live demo:** `https://rolet-web-server.vercel.app` (Solana Devnet)  
 **Program:** [`2ePEUzCFcxD559Hy3irB2TGbYAwU2UD352sVj77QPrS7`](https://explorer.solana.com/address/2ePEUzCFcxD559Hy3irB2TGbYAwU2UD352sVj77QPrS7?cluster=devnet) on devnet
 
 ---

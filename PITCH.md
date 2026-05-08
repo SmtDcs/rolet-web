@@ -47,7 +47,7 @@ Turns are signed by the session keypair locally — no wallet popups mid-game.
 
 ## Demo
 
-[Live demo link] · [GitHub]
+[`rolet-web-server.vercel.app`](https://rolet-web-server.vercel.app) · [`github.com/SmtDcs/rolet-web`](https://github.com/SmtDcs/rolet-web)
 
 ## Roadmap
 
