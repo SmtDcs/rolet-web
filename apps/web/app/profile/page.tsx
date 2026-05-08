@@ -47,18 +47,18 @@ export default function ProfilePage() {
 
     setLoading(true);
     try {
+      // SNS verification — optional. If domain doesn't exist or isn't owned
+      // by this wallet, warn but allow enrollment anyway for the hackathon demo.
       try {
         const mainnetConn = new Connection("https://api.mainnet-beta.solana.com");
         const owner = await resolve(mainnetConn, cleanDomain);
         if (owner.toBase58() !== wallet.publicKey.toBase58()) {
-          emitToast("error", `${cleanDomain} is owned by another wallet!`);
-          setLoading(false);
-          return;
+          emitToast("error", `${cleanDomain} is not owned by this wallet — enrolling with unverified handle`);
+        } else {
+          emitToast("success", `${cleanDomain} verified ✓`);
         }
-      } catch (err) {
-        emitToast("error", `Could not resolve ${cleanDomain}. Does it exist?`);
-        setLoading(false);
-        return;
+      } catch {
+        emitToast("info", `Could not verify ${cleanDomain} on mainnet — enrolling with unverified handle`);
       }
 
       // Fire the tx — sig may come back null if the RPC client times out on
