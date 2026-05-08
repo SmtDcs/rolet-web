@@ -987,6 +987,7 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
     generateCommitReveal,
     openLobby,
     joinLobby,
+    findOpenLobby,
     fetchLobby,
     closeLobby,
   };
