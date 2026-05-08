@@ -478,7 +478,8 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
   const findOpenLobby = useCallback(async () => {
     if (!programL1) return null;
     try {
-      const lobbies = await programL1.account.lobbyState.all([
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const lobbies = await (programL1.account as any).lobbyState.all([
         {
           memcmp: {
             offset: 80,
