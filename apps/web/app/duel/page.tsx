@@ -232,8 +232,10 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
     })();
     const poll = setInterval(async () => {
       if (!alive) return;
-      const fresh = await rolet.fetchMatch(matchId);
-      if (alive && fresh) setState(fresh);
+      try {
+        const fresh = await rolet.fetchMatch(matchId);
+        if (alive && fresh) setState(fresh);
+      } catch { /* swallow RPC errors between polls */ }
     }, 1500);
     return () => {
       alive = false;
@@ -294,10 +296,12 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
     ghostFiringRef.current = true;
     setLog((l) => ["// 👻 ghost is taking aim…", ...l].slice(0, 24));
     const timer = setTimeout(async () => {
-      const targetSelf = Math.random() < 0.3;
-      await rolet_.current.ghostPullTrigger(matchId, ghostKp, targetSelf);
-      const fresh = await rolet_.current.fetchMatch(matchId);
-      if (fresh) setStateRef.current(fresh);
+      try {
+        const targetSelf = Math.random() < 0.3;
+        await rolet_.current.ghostPullTrigger(matchId, ghostKp, targetSelf);
+        const fresh = await rolet_.current.fetchMatch(matchId);
+        if (fresh) setStateRef.current(fresh);
+      } catch { /* ghost turn failed; next state poll will recover */ }
       ghostFiringRef.current = false;
     }, 1500);
     // No cleanup that clears the timer — that was the bug. If the user
@@ -1241,8 +1245,10 @@ function HostWaiting({ matchId }: { matchId: BN }) {
     if (!rolet.program) return;
     let alive = true;
     const poll = setInterval(async () => {
-      const l = await rolet.fetchLobby(matchId);
-      if (alive) setLobby(l);
+      try {
+        const l = await rolet.fetchLobby(matchId);
+        if (alive) setLobby(l);
+      } catch { /* swallow RPC errors between polls */ }
     }, 1500);
     rolet.fetchLobby(matchId).then((l) => { if (alive) setLobby(l); });
     return () => { alive = false; clearInterval(poll); };
@@ -1336,11 +1342,13 @@ function GuestLobby({ matchId }: { matchId: BN }) {
     if (!joined || !rolet.program) return;
     let alive = true;
     const poll = setInterval(async () => {
-      const m = await rolet.fetchMatch(matchId);
-      if (alive && m) {
-        clearInterval(poll);
-        router.replace(`/duel?match=${matchHex}`);
-      }
+      try {
+        const m = await rolet.fetchMatch(matchId);
+        if (alive && m) {
+          clearInterval(poll);
+          router.replace(`/duel?match=${matchHex}`);
+        }
+      } catch { /* swallow RPC errors between polls */ }
     }, 1500);
     return () => { alive = false; clearInterval(poll); };
   }, [joined, rolet, matchId, matchHex, router]);
