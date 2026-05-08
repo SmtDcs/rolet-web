@@ -2,7 +2,7 @@
 "use client";
 
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Fog, Float, MeshDistortMaterial, Stars } from "@react-three/drei";
+import { Stars } from "@react-three/drei";
 import { useRef, useMemo } from "react";
 import * as THREE from "three";
 
