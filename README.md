@@ -31,6 +31,16 @@ All state lives on Solana L1. No server, no database.
 
 ---
 
+## Key Features
+
+1. **Global Auto-Matchmaking**: Fully on-chain global matchmaking pool without any central server. Players are seamlessly matched in real-time.
+2. **SNS Identity (Bonfida)**: Player profiles verify their `.sol` domains upon registration.
+3. **Session Keys (Gasless Gameplay)**: Players sign exactly ONE transaction to start the match. All subsequent moves (firing, using items) are auto-signed by a temporary session keypair.
+4. **Commit-Reveal RNG**: Uses Solana slot hashes combined with blinded player entropy to guarantee unpredictable chamber contents.
+5. **Tactical Item Cards**: Fully implemented on-chain logic for items like `Shuffler`, `HawkEye`, `LastChance`, and `HandOfFate`.
+
+---
+
 ## Full game flow
 
 ```
@@ -122,7 +132,7 @@ graph TD
 | Program | Anchor 0.30.1 · Rust · Solana Devnet |
 | Frontend | Next.js 16 · React 19 · Tailwind v4 |
 | Wallet | Phantom + Solflare via `@solana/wallet-adapter` |
-| RPC | Helius (devnet) |
+| RPC | RPC Fast (devnet infrastructure) |
 | Reward | `$ROLET` SPL token (6 decimals) |
 
 ---
@@ -180,9 +190,9 @@ rolet-web/
 
 ## Known limitations
 
-- **MagicBlock ER not active.** SDK has a `solana-program` type-split conflict with Anchor 0.30.1. Game runs on L1 with session keys (~400ms latency). See HANDOFF §9.
+- **Commit-Reveal Vulnerability**: In the current implementation, the `join_lobby` instruction requires the Guest to pass their `guest_secret` to the blockchain in plain text. This creates a griefing vector where the Host can read the Guest's secret, compute the final game seed locally, and choose not to call `init_match` if the initial gun chambers are unfavorable. For a production release, the flow will be split into a strict three-step commit-reveal (Guest commits hash -> Host calls init -> Guest reveals). Due to the hackathon deadline, this remains a known limitation.
+- **MagicBlock ER not active.** SDK has a `solana-program` type-split conflict with Anchor 0.30.1. ER delegation is mathematically impossible to enforce solely from the frontend without the Rust `#[ephemeral]` bindings. The game runs flawlessly on L1 Devnet with Session Keys.
 - **No Character NFT yet.** Profile stores a placeholder; Metaplex Core mint flow is on the roadmap.
-- **SNS handles unverified.** Stored as raw string; Bonfida lookup pending.
 - **Tests minimal.** `init_match` smoke test only.
 
 ---

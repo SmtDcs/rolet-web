@@ -174,6 +174,7 @@ function DuelRouter() {
   const matchHex = search.get("match");
   const lobbyHex = search.get("lobby");
   const joinHex = search.get("join");
+  const autoJoin = search.get("auto") === "true";
 
   const matchId = useMemo(() => {
     if (!matchHex) return null;
@@ -188,7 +189,7 @@ function DuelRouter() {
 
   if (matchId) return <ActiveDuel matchId={matchId} />;
   if (lobbyMatchId && lobbyHex) return <HostWaiting matchId={lobbyMatchId} />;
-  if (lobbyMatchId && joinHex) return <GuestLobby matchId={lobbyMatchId} />;
+  if (lobbyMatchId && joinHex) return <GuestLobby matchId={lobbyMatchId} autoJoin={autoJoin} />;
   return <Lobby />;
 }
 
@@ -307,9 +308,10 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
       } catch { /* ghost turn failed; next state poll will recover */ }
       ghostFiringRef.current = false;
     }, 1500);
-    // No cleanup that clears the timer — that was the bug. If the user
-    // navigates away mid-aim the timer fires harmlessly into a stale ref.
-    return undefined;
+    return () => {
+      clearTimeout(timer);
+      ghostFiringRef.current = false;
+    };
   }, [decoded, youKey, matchId]);
 
   const handleArm = async () => {
@@ -1196,6 +1198,12 @@ function Lobby() {
     if (!wallet.publicKey || !profile) { router.push("/profile"); return; }
     setBusy(true);
     try {
+      const openMatchId = await rolet.findOpenLobby();
+      if (openMatchId) {
+        router.replace(`/duel?join=${openMatchId.toString(16)}&auto=true`);
+        return;
+      }
+
       const idBytes = new Uint8Array(8);
       crypto.getRandomValues(idBytes);
       const matchId = new BN(idBytes);
@@ -1216,23 +1224,22 @@ function Lobby() {
   }, [router, rolet, wallet.publicKey, profile]);
 
   return (
-    <LobbyShell subtitle="LOBBY · NO MATCH BOUND" statusTag="// IDLE" toasts={toasts}>
+    <LobbyShell subtitle="MATCHMAKING · GLOBAL SERVER" statusTag="// IDLE" toasts={toasts}>
       <span className="text-[10px] tracking-[0.6em] text-zinc-600 mb-4">
         // CHAMBER UNLOADED — NO ACTIVE PROTOCOL
       </span>
 
       <h1 className="font-display text-bleed leading-none select-none" style={{ fontSize: "clamp(3rem, 9vw, 7rem)" }}>
-        NEW DUEL
+        MATCHMAKING
       </h1>
 
       <p className="mt-4 max-w-xl text-sm tracking-[0.2em] text-zinc-500 uppercase">
-        Open a lobby on-chain. Share the link with your opponent — the match
-        seeds itself once both wallets commit.
+        Scanning the Solana network for an opponent. If no open lobbies are found, you will host a new one and wait for a challenger.
       </p>
 
       <div className="mt-3 flex items-center gap-3 text-[10px] tracking-[0.4em] text-rust">
         <span className="h-px w-12 bg-rust" />
-        REAL 2-PLAYER · LOBBY PDA
+        GLOBAL POOL · ON-CHAIN
         <span className="h-px w-12 bg-rust" />
       </div>
 
@@ -1253,10 +1260,10 @@ function Lobby() {
             disabled={!wallet.connected || busy || rolet.busy || !rolet.program || profile === undefined}
             className="border-2 border-red-600 bg-gradient-to-b from-red-950/60 to-black px-10 py-5 font-display tracking-[0.4em] text-xl text-red-400 text-bleed animate-blood transition-all hover:text-red-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:animate-none"
           >
-            {busy || rolet.busy ? "▼ OPENING…" : "▼ CREATE LOBBY ▼"}
+            {busy || rolet.busy ? "▼ SCANNING NETWORK…" : "▼ FIND MATCH ▼"}
             <div className="mt-1 text-[8px] tracking-[0.5em] text-rust">
               {wallet.connected
-                ? profile === undefined ? "checking profile…" : "signs open_lobby tx"
+                ? profile === undefined ? "checking profile…" : "auto connects or hosts"
                 : "wallet not connected"}
             </div>
           </button>
@@ -1327,25 +1334,21 @@ function HostWaiting({ matchId }: { matchId: BN }) {
   }, [wallet.publicKey, lobby, matchHex, matchId, rolet, router]);
 
   return (
-    <LobbyShell subtitle={`LOBBY · 0x${matchHex.toUpperCase()}`} statusTag={guestReady ? "// GUEST READY" : "// WAITING"} toasts={toasts}>
+    <LobbyShell subtitle={`LOBBY · 0x${matchHex.toUpperCase()}`} statusTag={guestReady ? "// CHALLENGER FOUND" : "// WAITING"} toasts={toasts}>
       <span className="text-[10px] tracking-[0.6em] text-zinc-600 mb-4">
-        // LOBBY OPEN — WAITING FOR SECOND PLAYER
+        // LOBBY HOSTED ON-CHAIN
       </span>
 
       <h1 className="font-display text-bleed leading-none select-none" style={{ fontSize: "clamp(2rem, 7vw, 5rem)" }}>
-        SHARE LINK
+        {guestReady ? "MATCH READY" : "SCANNING…"}
       </h1>
 
       <div className="mt-8 w-full max-w-xl border border-rust/60 bg-black/70 p-4 text-left">
-        <div className="text-[9px] tracking-[0.4em] text-rust mb-2">// INVITE URL</div>
+        <div className="text-[9px] tracking-[0.4em] text-rust mb-2">// LOBBY STATUS</div>
         <div className="flex items-center gap-3">
-          <code className="flex-1 text-[11px] text-zinc-300 break-all">{joinUrl}</code>
-          <button
-            onClick={() => navigator.clipboard.writeText(joinUrl)}
-            className="shrink-0 border border-rust/60 px-3 py-1 text-[10px] tracking-[0.3em] text-rust hover:border-red-600 hover:text-red-400"
-          >
-            COPY
-          </button>
+          <code className="flex-1 text-[11px] text-zinc-300">
+            {guestReady ? "An opponent has matched with your lobby." : "Waiting for another player to click 'Find Match'..."}
+          </code>
         </div>
       </div>
 
@@ -1375,7 +1378,7 @@ function HostWaiting({ matchId }: { matchId: BN }) {
 // ============================================================
 // GUEST LOBBY — joins lobby, then polls for match to appear
 // ============================================================
-function GuestLobby({ matchId }: { matchId: BN }) {
+function GuestLobby({ matchId, autoJoin = false }: { matchId: BN, autoJoin?: boolean }) {
   const router = useRouter();
   const wallet = useWallet();
   const rolet = useRolet({ ephemeral: false });
@@ -1383,6 +1386,26 @@ function GuestLobby({ matchId }: { matchId: BN }) {
   const matchHex = matchId.toString(16);
   const [joined, setJoined] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [autoTriggered, setAutoTriggered] = useState(false);
+
+  const handleJoin = useCallback(async () => {
+    if (!wallet.publicKey) return;
+    setBusy(true);
+    try {
+      const { secret, commit } = rolet.generateCommitReveal();
+      const sig = await rolet.joinLobby(matchId, commit, secret);
+      if (sig) setJoined(true);
+    } finally {
+      setBusy(false);
+    }
+  }, [wallet.publicKey, rolet, matchId]);
+
+  useEffect(() => {
+    if (autoJoin && wallet.publicKey && !joined && !busy && !autoTriggered) {
+      setAutoTriggered(true);
+      handleJoin();
+    }
+  }, [autoJoin, wallet.publicKey, joined, busy, autoTriggered, handleJoin]);
 
   // After joining, poll for MatchState to appear (host calls init_match)
   useEffect(() => {
@@ -1400,32 +1423,20 @@ function GuestLobby({ matchId }: { matchId: BN }) {
     return () => { alive = false; clearInterval(poll); };
   }, [joined, rolet, matchId, matchHex, router]);
 
-  const handleJoin = useCallback(async () => {
-    if (!wallet.publicKey) return;
-    setBusy(true);
-    try {
-      const { secret, commit } = rolet.generateCommitReveal();
-      const sig = await rolet.joinLobby(matchId, commit, secret);
-      if (sig) setJoined(true);
-    } finally {
-      setBusy(false);
-    }
-  }, [wallet.publicKey, rolet, matchId]);
-
   return (
-    <LobbyShell subtitle={`JOIN · 0x${matchHex.toUpperCase()}`} statusTag={joined ? "// JOINED" : "// STANDBY"} toasts={toasts}>
+    <LobbyShell subtitle={`MATCH · 0x${matchHex.toUpperCase()}`} statusTag={joined ? "// JOINED" : "// STANDBY"} toasts={toasts}>
       <span className="text-[10px] tracking-[0.6em] text-zinc-600 mb-4">
-        // LOBBY INVITE RECEIVED
+        // OPPONENT FOUND
       </span>
 
       <h1 className="font-display text-bleed leading-none select-none" style={{ fontSize: "clamp(2rem, 7vw, 5rem)" }}>
-        {joined ? "WAITING…" : "JOIN DUEL"}
+        {joined ? "WAITING FOR HOST…" : "CONNECTING"}
       </h1>
 
       <p className="mt-4 max-w-xl text-sm tracking-[0.2em] text-zinc-500 uppercase">
         {joined
           ? "Your commit is on-chain. Waiting for the host to launch the match…"
-          : "Click below to generate a commit-reveal pair and join the lobby."}
+          : "Sign the transaction to join the opponent's lobby."}
       </p>
 
       {!joined && (

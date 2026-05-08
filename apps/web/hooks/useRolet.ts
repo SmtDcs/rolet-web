@@ -17,6 +17,7 @@ import {
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { keccak_256 } from "@noble/hashes/sha3.js";
+import bs58 from "bs58";
 
 import idl from "@/idl/rolet.json";
 import type { Rolet } from "@/idl/rolet_types";
@@ -73,7 +74,7 @@ type CommitReveal = {
 // ============================================================
 let toastSeq = 0;
 const toastListeners = new Set<(t: Toast) => void>();
-function emitToast(level: Toast["level"], message: string) {
+export function emitToast(level: Toast["level"], message: string) {
   const t: Toast = { id: ++toastSeq, level, message };
   toastListeners.forEach((l) => l(t));
   if (typeof window !== "undefined") {
@@ -467,6 +468,35 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
     },
     []
   );
+
+  /**
+   * Scans the network for an open LobbyState (guest == None)
+   * The Option<Pubkey> for guest starts at offset 80:
+   * 8 (disc) + 8 (match_id) + 32 (host) + 32 (host_commit) = 80 bytes.
+   * If byte 80 is 0, the option is None.
+   */
+  const findOpenLobby = useCallback(async () => {
+    if (!programL1) return null;
+    try {
+      const lobbies = await programL1.account.lobbyState.all([
+        {
+          memcmp: {
+            offset: 80,
+            bytes: bs58.encode(Uint8Array.from([0])),
+          },
+        },
+      ]);
+      if (lobbies.length > 0) {
+        // Return the first available match ID
+        return lobbies[0].account.matchId as BN;
+      }
+      return null;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[findOpenLobby] error:", err);
+      return null;
+    }
+  }, [programL1]);
 
   const initMatch = useCallback(
     async ({

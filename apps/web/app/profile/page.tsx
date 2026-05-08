@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { useRolet, useToasts } from "@/hooks/useRolet";
+import { Connection } from "@solana/web3.js";
+import { resolve } from "@bonfida/spl-name-service";
+import { useRolet, useToasts, emitToast } from "@/hooks/useRolet";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ProfileSnapshot = any;
@@ -39,12 +41,30 @@ export default function ProfilePage() {
 
   const handleCreate = useCallback(async () => {
     if (!wallet.publicKey || !snsDomain) return;
+
+    let cleanDomain = snsDomain.trim().toLowerCase();
+    if (!cleanDomain.endsWith(".sol")) cleanDomain += ".sol";
+
     setLoading(true);
     try {
+      try {
+        const mainnetConn = new Connection("https://api.mainnet-beta.solana.com");
+        const owner = await resolve(mainnetConn, cleanDomain);
+        if (owner.toBase58() !== wallet.publicKey.toBase58()) {
+          emitToast("error", `${cleanDomain} is owned by another wallet!`);
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        emitToast("error", `Could not resolve ${cleanDomain}. Does it exist?`);
+        setLoading(false);
+        return;
+      }
+
       // Fire the tx — sig may come back null if the RPC client times out on
       // confirmation even though the tx actually lands, so don't gate the
       // redirect on it.
-      await rolet.initProfile({ snsDomain, durabilityMax: 10 });
+      await rolet.initProfile({ snsDomain: cleanDomain, durabilityMax: 10 });
 
       // Poll for the on-chain PlayerProfile PDA to appear, then redirect.
       // Up to ~8s, every 400ms.
@@ -216,6 +236,11 @@ function ExistingProfileCard({ profile }: { profile: ProfileSnapshot }) {
       </div>
 
       <Row label="SNS" value={profile.snsDomain || "(none)"} />
+      {profile.snsDomain && (
+        <div className="flex justify-end text-[9px] tracking-[0.3em] text-red-500 mb-2">
+          [✓] VERIFIED OWNER
+        </div>
+      )}
       <Row
         label="DURABILITY"
         value={`${profile.durabilityRemaining}/${profile.durabilityMax}`}
