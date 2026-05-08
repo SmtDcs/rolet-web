@@ -452,26 +452,6 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
               </Link>
             </div>
           )}
-          {decoded?.status !== "completed" && !rolet.sessionKey && (
-            <div className="border border-red-700 bg-gradient-to-r from-[#1a0606]/80 via-black/60 to-[#1a0606]/80 px-4 py-3 flex items-center justify-between animate-blood">
-              <div>
-                <div className="text-[9px] tracking-[0.4em] text-red-500 text-bleed">
-                  // WEAPON UNARMED
-                </div>
-                <div className="text-[11px] tracking-[0.2em] text-zinc-400 mt-1">
-                  Sign a session key to enable gasless turns inside the Ephemeral Rollup.
-                </div>
-              </div>
-              <button
-                onClick={handleArm}
-                disabled={!wallet.connected || rolet.busy}
-                className="border-2 border-red-600 bg-black/60 px-5 py-3 font-display tracking-[0.4em] text-red-400 text-bleed hover:text-red-200 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                ▼ ARM WEAPON ▼
-              </button>
-            </div>
-          )}
-
           <div className="grid grid-cols-12 gap-4">
             <PlayerVitals hp={playerHp} maxHp={4} turnIsYours={turnIsYours} />
             <HandRack
@@ -479,13 +459,13 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
               selectedSlot={selectedSlot}
               onSelect={setSelectedSlot}
               onPlay={handlePlayCard}
-              disabled={!turnIsYours || !rolet.sessionKey || !!decoded?.silencedYou || rolet.busy}
+              disabled={!turnIsYours || !!decoded?.silencedYou || rolet.busy}
             />
             <ActionPanel
               target={target}
               onTargetChange={setTarget}
               onPull={handlePullTrigger}
-              disabled={!turnIsYours || !rolet.sessionKey || rolet.busy}
+              disabled={!turnIsYours || rolet.busy}
             />
           </div>
 
