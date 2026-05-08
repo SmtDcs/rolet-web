@@ -127,7 +127,7 @@ the instruction data.
 > session-key gasless turns, 2-player PvP via Lobby PDA rendezvous.
 > Source on GitHub. Try the live demo on devnet."
 
-**End screen:** GitHub URL + live demo URL
+**End screen:** `github.com/SmtDcs/rolet-web` + `https://rolet-web-server.vercel.app`
 
 ---
 
