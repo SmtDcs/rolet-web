@@ -14,10 +14,14 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
     (process.env.NEXT_PUBLIC_SOLANA_NETWORK as WalletAdapterNetwork) ??
     WalletAdapterNetwork.Devnet;
 
-  const endpoint = useMemo(
-    () => process.env.NEXT_PUBLIC_RPC_ENDPOINT ?? clusterApiUrl(network),
-    [network]
-  );
+  const endpoint = useMemo(() => {
+    const raw = process.env.NEXT_PUBLIC_RPC_ENDPOINT ?? clusterApiUrl(network);
+    // Relative paths like "/api/rpc" need an absolute URL for Solana Connection
+    if (raw.startsWith("/") && typeof window !== "undefined") {
+      return `${window.location.origin}${raw}`;
+    }
+    return raw;
+  }, [network]);
 
   // Memoize wallets — re-instantiating breaks the adapter's listeners.
   const wallets = useMemo(
