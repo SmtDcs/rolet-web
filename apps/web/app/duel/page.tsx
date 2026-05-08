@@ -2,6 +2,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BN } from "@coral-xyz/anchor";
@@ -9,6 +10,8 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { useRolet, useToasts, type RoletCard } from "@/hooks/useRolet";
+
+const DuelArena3D = dynamic(() => import("@/components/DuelArena3D"), { ssr: false });
 
 // ============================================================
 // Domain types
@@ -365,19 +368,24 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
 
   return (
     <main className="relative min-h-screen overflow-hidden">
-      {/* Room atmosphere */}
+      {/* 3D arena background */}
+      <DuelArena3D isYourTurn={turnIsYours} />
+
+      {/* Room atmosphere overlay — kept on top of 3D for CRT feel */}
       <div
-        className="absolute inset-0 -z-10"
+        className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse at 50% 30%, rgba(80, 35, 15, 0.35) 0%, rgba(10, 6, 4, 1) 65%), #050302",
+            "radial-gradient(ellipse at 50% 30%, rgba(80, 35, 15, 0.18) 0%, rgba(10, 6, 4, 0.55) 65%)",
+          zIndex: 1,
         }}
       />
       <div
-        className="absolute inset-0 -z-10 opacity-[0.08]"
+        className="absolute inset-0 pointer-events-none opacity-[0.06]"
         style={{
           backgroundImage:
             "repeating-linear-gradient(90deg, rgba(120,70,30,0.4) 0 1px, transparent 1px 140px)",
+          zIndex: 1,
         }}
       />
 
@@ -395,7 +403,7 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
         </span>
       </div>
 
-      <div className="relative mx-auto grid min-h-screen max-w-7xl grid-rows-[1fr_auto_1fr] gap-4 px-6 pt-16 pb-6">
+      <div className="relative z-10 mx-auto grid min-h-screen max-w-7xl grid-rows-[1fr_auto_1fr] gap-4 px-6 pt-16 pb-6">
         {/* OPPONENT */}
         <section className="relative flex flex-col items-center justify-end pt-6">
           <OpponentFigure status={opponentStatus} />
@@ -416,7 +424,10 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
         </section>
 
         {/* PLAYER HUD */}
-        <section className="relative flex flex-col gap-4 pt-6">
+        <section className="relative flex flex-col gap-4 pt-2">
+          <div className="flex justify-center mb-1">
+            <PlayerFigure isYourTurn={turnIsYours} />
+          </div>
           {decoded?.status === "completed" && !settled && (
             <CompletedBanner
               decoded={decoded}
@@ -543,7 +554,7 @@ function OpponentFigure({
   status: "watching" | "silenced" | "blocking";
 }) {
   return (
-    <div className="relative h-44 w-72 sm:h-56 sm:w-96">
+    <div className="animate-float relative h-44 w-72 sm:h-56 sm:w-96">
       <div
         className="absolute inset-x-0 bottom-0 h-28"
         style={{
@@ -554,14 +565,14 @@ function OpponentFigure({
         }}
       />
       <div
-        className="absolute left-1/2 top-2 -translate-x-1/2"
-        style={{ filter: "drop-shadow(0 0 18px rgba(150,30,30,0.35))" }}
+        className="animate-breathe absolute left-1/2 top-2 -translate-x-1/2"
+        style={{ filter: "drop-shadow(0 0 22px rgba(180,30,30,0.5))" }}
       >
         <svg width="120" height="150" viewBox="0 0 120 150" aria-hidden>
           <ellipse cx="60" cy="78" rx="46" ry="62" fill="#d8cabb" opacity="0.92" />
           <ellipse cx="60" cy="78" rx="46" ry="62" fill="url(#porcelain-shadow)" />
-          <ellipse cx="42" cy="68" rx="7" ry="11" fill="#0a0807" />
-          <ellipse cx="78" cy="68" rx="7" ry="11" fill="#0a0807" />
+          <ellipse cx="42" cy="68" rx="7" ry="11" fill="#0a0807" className="animate-eye-glow" />
+          <ellipse cx="78" cy="68" rx="7" ry="11" fill="#0a0807" className="animate-eye-glow" />
           <path d="M 48 110 Q 60 114 72 110" stroke="#1a0e08" strokeWidth="1.5" fill="none" />
           <path d="M 60 16 L 56 50 L 64 90 L 58 130" stroke="#3a2418" strokeWidth="0.8" fill="none" />
           <path d="M 38 40 L 50 60 L 46 88" stroke="#3a2418" strokeWidth="0.6" fill="none" />
@@ -585,6 +596,42 @@ function OpponentFigure({
           // SHIELD UP
         </span>
       )}
+    </div>
+  );
+}
+
+function PlayerFigure({ isYourTurn }: { isYourTurn: boolean }) {
+  return (
+    <div className="animate-float-player relative h-28 w-56 sm:h-36 sm:w-72 opacity-70">
+      <div
+        className="animate-breathe absolute left-1/2 top-0 -translate-x-1/2"
+        style={{
+          filter: isYourTurn
+            ? "drop-shadow(0 0 18px rgba(120,60,20,0.6))"
+            : "drop-shadow(0 0 8px rgba(60,20,10,0.3))",
+        }}
+      >
+        {/* Player viewed from behind — darker silhouette */}
+        <svg width="90" height="110" viewBox="0 0 90 110" aria-hidden>
+          <defs>
+            <radialGradient id="player-glow" cx="50%" cy="40%" r="55%">
+              <stop offset="0%" stopColor={isYourTurn ? "rgba(120,60,20,0.3)" : "transparent"} />
+              <stop offset="100%" stopColor="transparent" />
+            </radialGradient>
+          </defs>
+          {/* Body glow */}
+          <ellipse cx="45" cy="55" rx="38" ry="50" fill="url(#player-glow)" />
+          {/* Head from behind */}
+          <ellipse cx="45" cy="28" rx="20" ry="24" fill="#1a0e08" opacity="0.9" />
+          {/* Neck */}
+          <rect x="39" y="48" width="12" height="10" rx="3" fill="#120908" />
+          {/* Shoulders */}
+          <path d="M 8 62 Q 20 52 45 55 Q 70 52 82 62 L 78 75 Q 60 68 45 70 Q 30 68 12 75 Z"
+            fill="#150a06" opacity="0.95" />
+          {/* Spine hint */}
+          <line x1="45" y1="50" x2="45" y2="90" stroke="#0a0604" strokeWidth="1.5" opacity="0.6" />
+        </svg>
+      </div>
     </div>
   );
 }

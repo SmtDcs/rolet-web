@@ -15,6 +15,11 @@
   --animate-flicker: rolet-flicker 4.2s infinite;
   --animate-blood: rolet-pulse-blood 2.4s ease-in-out infinite;
   --animate-title: rolet-title-shake 5.5s infinite;
+  --animate-float: rolet-float 3.2s ease-in-out infinite;
+  --animate-float-slow: rolet-float 4.8s ease-in-out infinite;
+  --animate-float-player: rolet-float 3.8s ease-in-out 0.6s infinite;
+  --animate-breathe: rolet-breathe 4s ease-in-out infinite;
+  --animate-eye-glow: rolet-eye-glow 3s ease-in-out infinite;
 }
 
 /* ──────────────────────────────────────────────────────────────
@@ -78,6 +83,22 @@
   40%      { transform: translate(1px, -1px) skewX(0.3deg); }
   60%      { transform: translate(-1px, 0) skewX(-0.2deg); }
   80%      { transform: translate(1px, 1px) skewX(0.4deg); }
+}
+
+@keyframes rolet-float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  30%      { transform: translateY(-10px) rotate(0.4deg); }
+  70%      { transform: translateY(-6px) rotate(-0.3deg); }
+}
+
+@keyframes rolet-breathe {
+  0%, 100% { transform: scaleX(1) scaleY(1); }
+  50%      { transform: scaleX(1.015) scaleY(0.985); }
+}
+
+@keyframes rolet-eye-glow {
+  0%, 100% { opacity: 0.85; filter: drop-shadow(0 0 2px rgba(20,8,6,0.8)); }
+  50%      { opacity: 1;    filter: drop-shadow(0 0 6px rgba(180,40,20,0.6)); }
 }
 
 /* ──────────────────────────────────────────────────────────────
