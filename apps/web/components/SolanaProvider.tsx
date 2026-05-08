@@ -16,9 +16,13 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
 
   const endpoint = useMemo(() => {
     const raw = process.env.NEXT_PUBLIC_RPC_ENDPOINT ?? clusterApiUrl(network);
-    // Relative paths like "/api/rpc" need an absolute URL for Solana Connection
-    if (raw.startsWith("/") && typeof window !== "undefined") {
-      return `${window.location.origin}${raw}`;
+    // Relative paths like "/api/rpc" only work in the browser.
+    // During SSR / static build there is no window, so fall back to public devnet.
+    if (raw.startsWith("/")) {
+      if (typeof window !== "undefined") {
+        return `${window.location.origin}${raw}`;
+      }
+      return clusterApiUrl(network);
     }
     return raw;
   }, [network]);
