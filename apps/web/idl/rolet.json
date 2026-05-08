@@ -140,6 +140,52 @@
       ]
     },
     {
+      "name": "open_lobby",
+      "discriminator": [135, 140, 212, 214, 45, 170, 29, 232],
+      "accounts": [
+        {
+          "name": "lobby",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [108, 111, 98, 98, 121] },
+              { "kind": "arg", "path": "match_id" }
+            ]
+          }
+        },
+        { "name": "host", "writable": true, "signer": true },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        { "name": "match_id", "type": "u64" },
+        { "name": "host_commit", "type": { "array": ["u8", 32] } }
+      ]
+    },
+    {
+      "name": "join_lobby",
+      "discriminator": [127, 102, 119, 190, 215, 223, 212, 159],
+      "accounts": [
+        { "name": "lobby", "writable": true },
+        { "name": "guest", "signer": true }
+      ],
+      "args": [
+        { "name": "guest_commit", "type": { "array": ["u8", 32] } },
+        { "name": "guest_secret", "type": { "array": ["u8", 32] } }
+      ]
+    },
+    {
+      "name": "close_lobby",
+      "discriminator": [4, 105, 152, 106, 82, 6, 43, 7],
+      "accounts": [
+        { "name": "lobby", "writable": true },
+        { "name": "host", "writable": true, "signer": true }
+      ],
+      "args": []
+    },
+    {
       "name": "init_vault",
       "discriminator": [77, 79, 85, 150, 33, 217, 52, 106],
       "accounts": [
@@ -174,7 +220,8 @@
   "accounts": [
     { "name": "MatchState", "discriminator": [250, 209, 137, 70, 235, 96, 121, 216] },
     { "name": "PlayerProfile", "discriminator": [82, 226, 99, 87, 164, 130, 181, 80] },
-    { "name": "GameVault", "discriminator": [152, 194, 238, 3, 140, 24, 51, 32] }
+    { "name": "GameVault", "discriminator": [152, 194, 238, 3, 140, 24, 51, 32] },
+    { "name": "LobbyState", "discriminator": [27, 25, 115, 108, 24, 198, 204, 85] }
   ],
   "events": [
     {
@@ -204,6 +251,14 @@
     {
       "name": "SessionKeyRegistered",
       "discriminator": [17, 83, 253, 120, 241, 172, 15, 204]
+    },
+    {
+      "name": "LobbyOpened",
+      "discriminator": [80, 139, 73, 131, 170, 187, 165, 147]
+    },
+    {
+      "name": "LobbyReady",
+      "discriminator": [141, 104, 77, 50, 238, 139, 216, 82]
     }
   ],
   "errors": [
@@ -458,6 +513,42 @@
           { "name": "authority", "type": "pubkey" },
           { "name": "session_key", "type": "pubkey" },
           { "name": "expires_at", "type": "i64" }
+        ]
+      }
+    },
+    {
+      "name": "LobbyState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "match_id", "type": "u64" },
+          { "name": "host", "type": "pubkey" },
+          { "name": "host_commit", "type": { "array": ["u8", 32] } },
+          { "name": "guest", "type": { "option": "pubkey" } },
+          { "name": "guest_commit", "type": { "array": ["u8", 32] } },
+          { "name": "guest_secret", "type": { "array": ["u8", 32] } },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "LobbyOpened",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "match_id", "type": "u64" },
+          { "name": "host", "type": "pubkey" }
+        ]
+      }
+    },
+    {
+      "name": "LobbyReady",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "match_id", "type": "u64" },
+          { "name": "host", "type": "pubkey" },
+          { "name": "guest", "type": "pubkey" }
         ]
       }
     }
