@@ -36,6 +36,7 @@ const ER_ENDPOINT =
 const MATCH_SEED = Buffer.from("match");
 const PROFILE_SEED = Buffer.from("profile");
 const VAULT_SEED = Buffer.from("vault");
+const LOBBY_SEED = Buffer.from("lobby");
 
 // ============================================================
 // Types — mirror the on-chain Card enum (camelCase per Anchor 0.30 IDL)
@@ -153,6 +154,13 @@ function profilePda(authority: PublicKey) {
 
 function vaultPda() {
   return PublicKey.findProgramAddressSync([VAULT_SEED], ROLET_PROGRAM_ID)[0];
+}
+
+function lobbyPda(matchId: BN) {
+  return PublicKey.findProgramAddressSync(
+    [LOBBY_SEED, matchId.toArrayLike(Buffer, "le", 8)],
+    ROLET_PROGRAM_ID
+  )[0];
 }
 
 // ============================================================
@@ -497,49 +505,15 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
     [programL1, l1Connection]
   );
 
-  /**
-   * Push the final MatchState back to L1 once the match is over. Calls
-   * MagicBlock's commit-and-undelegate ix from inside the ER. After this
-   * confirms, the L1 PDA holds the final state and `settle_match` can run.
-   */
+  // ER delegation is blocked (§14 — MagicBlock Rust SDK dependency conflicts,
+  // no ETA). Match always runs on L1; nothing to commit or undelegate.
+  // Keeping the signature so call sites don't need touching.
   const commitAndUndelegateMatch = useCallback(
-    async (matchId: BN) => {
-      if (!wallet.publicKey || !wallet.signTransaction) {
-        emitToast("error", "Wallet not connected");
-        return null;
-      }
-      try {
-        const ix = createCommitAndUndelegateInstruction(
-          wallet.publicKey,
-          [matchPda(matchId)],
-        );
-        const tx = new Transaction().add(ix);
-        tx.feePayer = wallet.publicKey;
-        // This ix runs inside the ER, so we send via the active connection
-        // (which is the ER endpoint when ephemeral=true).
-        tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-        const signed = await wallet.signTransaction(tx);
-        const sig = await connection.sendRawTransaction(signed.serialize());
-        await connection.confirmTransaction(sig, "confirmed");
-        emitToast("success", `Match committed back to L1 · ${sig.slice(0, 6)}…`);
-        return sig;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        // If the match was never delegated (PLAN_B path), the ER ix tries
-        // to write a read-only L1 account → silent skip is correct.
-        if (
-          msg.includes("read-only") ||
-          msg.includes("ProgramAccountNotFound") ||
-          msg.includes("invalid program")
-        ) {
-          emitToast("info", "Match was L1-only; no commit needed");
-          return null;
-        }
-        emitToast("error", `commit_and_undelegate failed · ${msg}`);
-        return null;
-      }
+    async (_matchId: BN) => {
+      emitToast("info", "Match was L1-only; no commit needed");
+      return null;
     },
-    [wallet, connection]
+    []
   );
 
   const initMatch = useCallback(
@@ -894,6 +868,96 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
     [programL1, wallet, l1Connection]
   );
 
+  const openLobby = useCallback(
+    async (matchId: BN, hostCommit: Uint8Array) => {
+      if (!programL1 || !wallet.publicKey) {
+        emitToast("error", "Wallet not connected");
+        return null;
+      }
+      setBusy(true);
+      try {
+        const sig = await programL1.methods
+          .openLobby(matchId, Array.from(hostCommit))
+          .accounts({
+            lobby: lobbyPda(matchId),
+            host: wallet.publicKey,
+            systemProgram: SystemProgram.programId,
+          } as never)
+          .rpc({ commitment: "confirmed" });
+        emitToast("success", `Lobby opened · ${sig.slice(0, 6)}…`);
+        return sig;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        emitToast("error", `open_lobby failed · ${msg}`);
+        return null;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [programL1, wallet.publicKey]
+  );
+
+  const joinLobby = useCallback(
+    async (matchId: BN, guestCommit: Uint8Array, guestSecret: Uint8Array) => {
+      if (!programL1 || !wallet.publicKey) {
+        emitToast("error", "Wallet not connected");
+        return null;
+      }
+      setBusy(true);
+      try {
+        const sig = await programL1.methods
+          .joinLobby(Array.from(guestCommit), Array.from(guestSecret))
+          .accounts({
+            lobby: lobbyPda(matchId),
+            guest: wallet.publicKey,
+          } as never)
+          .rpc({ commitment: "confirmed" });
+        emitToast("success", `Joined lobby · ${sig.slice(0, 6)}…`);
+        return sig;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        emitToast("error", `join_lobby failed · ${msg}`);
+        return null;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [programL1, wallet.publicKey]
+  );
+
+  const fetchLobby = useCallback(
+    async (matchId: BN) => {
+      if (!programL1) return null;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return await (programL1.account as any).lobbyState.fetch(lobbyPda(matchId));
+      } catch {
+        return null;
+      }
+    },
+    [programL1]
+  );
+
+  const closeLobby = useCallback(
+    async (matchId: BN) => {
+      if (!programL1 || !wallet.publicKey) return null;
+      try {
+        const sig = await programL1.methods
+          .closeLobby()
+          .accounts({
+            lobby: lobbyPda(matchId),
+            host: wallet.publicKey,
+          } as never)
+          .rpc({ commitment: "confirmed" });
+        emitToast("info", `Lobby closed · ${sig.slice(0, 6)}…`);
+        return sig;
+      } catch {
+        return null;
+      }
+    },
+    [programL1, wallet.publicKey]
+  );
+
   const subscribeMatch = useCallback(
     (_matchId: BN, _onChange: (state: unknown) => void) => {
       // PLAN_B: Helius free tier blocks WebSocket. The HTTP poll inside
@@ -924,7 +988,7 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
     sessionKey: sessionKey?.keypair.publicKey ?? null,
     busy,
     startSession,
-    pda: { match: matchPda, profile: profilePda, vault: vaultPda },
+    pda: { match: matchPda, profile: profilePda, vault: vaultPda, lobby: lobbyPda },
     initMatch,
     delegateMatch,
     commitAndUndelegateMatch,
@@ -939,5 +1003,9 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
     fetchMatch,
     subscribeMatch,
     generateCommitReveal,
+    openLobby,
+    joinLobby,
+    fetchLobby,
+    closeLobby,
   };
 }
