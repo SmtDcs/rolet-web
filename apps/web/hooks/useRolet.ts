@@ -365,62 +365,14 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
    * Gracefully no-ops on localnet (delegation program isn't deployed there).
    */
   const delegateMatch = useCallback(
-    async (matchId: BN) => {
-      if (!wallet.publicKey || !wallet.signTransaction) {
-        emitToast("error", "Wallet not connected");
-        return null;
-      }
-      const matchAccount = matchPda(matchId);
-
-      try {
-        const ix = createDelegateInstruction(
-          {
-            payer: wallet.publicKey,
-            delegatedAccount: matchAccount,
-            ownerProgram: ROLET_PROGRAM_ID,
-          },
-          {
-            seeds: [
-              Buffer.from("match"),
-              matchId.toArrayLike(Buffer, "le", 8),
-            ],
-          }
-        );
-        const tx = new Transaction().add(ix);
-        tx.feePayer = wallet.publicKey;
-        tx.recentBlockhash = (
-          await l1Connection.getLatestBlockhash()
-        ).blockhash;
-        const signed = await wallet.signTransaction(tx);
-        const sig = await l1Connection.sendRawTransaction(signed.serialize());
-        await l1Connection.confirmTransaction(sig, "confirmed");
-        emitToast("success", `Match delegated to ER · ${sig.slice(0, 6)}…`);
-        return sig;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        // Common failure modes:
-        //  - "ProgramAccountNotFound": delegation program isn't on this cluster (localnet)
-        //  - "Missing signature": MagicBlock SDK expects the owner program to
-        //    sign for the PDA — only possible via in-program CPI, not from a
-        //    standalone client tx. Until rolet ships its own delegate ix,
-        //    we degrade to L1-only play.
-        if (
-          msg.includes("ProgramAccountNotFound") ||
-          msg.includes("invalid program") ||
-          msg.includes("Missing signature") ||
-          msg.includes("Signature verification failed")
-        ) {
-          emitToast(
-            "info",
-            "ER delegation unavailable — match will run on L1 (still gasless via session keys)",
-          );
-        } else {
-          emitToast("error", `delegate failed · ${msg}`);
-        }
-        return null;
-      }
+    async (_matchId: BN) => {
+      // ER delegation permanently disabled — MagicBlock SDK has a Rust-side
+      // dep conflict with Anchor 0.30.1 (§14). Attempting the delegation ix
+      // causes Solflare to reject with "Network mismatch" because the
+      // MagicBlock program ID is unrecognised on devnet. Match runs on L1.
+      return null;
     },
-    [wallet, l1Connection]
+    []
   );
 
   /**
