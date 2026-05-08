@@ -1,11 +1,23 @@
 # ROLET
 
+![Solana](https://img.shields.io/badge/Solana-Devnet-9945FF?logo=solana&logoColor=white)
+![Anchor](https://img.shields.io/badge/Anchor-0.30.1-blue)
+![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
+
 > A fully on-chain PvP Russian Roulette on Solana. Eight chambers, tactical
 > cards, session-key gasless turns, real 2-player matchmaking via on-chain
 > Lobby PDA. One winner claims `$ROLET`.
 
-**Live demo:** `https://rolet-web-server.vercel.app` (Solana Devnet)  
-**Program:** [`2ePEUzCFcxD559Hy3irB2TGbYAwU2UD352sVj77QPrS7`](https://explorer.solana.com/address/2ePEUzCFcxD559Hy3irB2TGbYAwU2UD352sVj77QPrS7?cluster=devnet) on devnet
+**Live demo:** [`rolet-web-server.vercel.app`](https://rolet-web-server.vercel.app) (Solana Devnet)  
+**Program:** [`2ePEUzC...QPrS7`](https://explorer.solana.com/address/2ePEUzCFcxD559Hy3irB2TGbYAwU2UD352sVj77QPrS7?cluster=devnet) on devnet
+
+---
+
+## Screenshots
+
+> _Add screenshots here after recording the demo._  
+> Suggested: lobby screen · active duel · winner payout · profile page.
 
 ---
 
@@ -55,37 +67,51 @@ settle_match → winner claims $ROLET
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────┐
-│                   Solana Devnet (L1)                     │
-│                                                          │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐  │
-│  │ PlayerProfile│  │  MatchState  │  │   GameVault    │  │
-│  │     PDA      │  │     PDA      │  │     PDA        │  │
-│  │ (per wallet) │  │ (per match)  │  │ ($ROLET pool)  │  │
-│  └─────────────┘  └──────────────┘  └────────────────┘  │
-│                                                          │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │                  LobbyState PDA                   │   │
-│  │  seeds: ["lobby", match_id (le64)]               │   │
-│  │  host_commit · guest_commit · guest_secret       │   │
-│  │  Created by host → closed after init_match       │   │
-│  └──────────────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────────────┘
-          ▲ HTTP polling (1.5s)     ▲ instruction send
-          │                         │
-┌─────────┴─────────────────────────┴───────────────────┐
-│                 Next.js 16 Frontend                    │
-│                                                        │
-│  useRolet hook → Anchor client → Helius RPC            │
-│  Session keys → popup-free turns                       │
-│  Commit-reveal → RNG from both players' secrets        │
-└────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Solana["Solana Devnet (L1)"]
+        PP[PlayerProfile PDA\nper wallet]
+        LS[LobbyState PDA\nseeds: lobby + match_id]
+        MS[MatchState PDA\nper match]
+        GV[GameVault PDA\n$ROLET pool]
+    end
+
+    subgraph Frontend["Next.js 16 Frontend"]
+        UR[useRolet hook\nAnchor client]
+        SK[Session Keypair\ngasless turns]
+        CR[Commit-Reveal\nkeccak256 secrets]
+    end
+
+    Host -->|open_lobby| LS
+    Guest -->|join_lobby guest_commit| LS
+    Host -->|init_match → close_lobby| MS
+    MS -->|settle_match| GV
+    GV -->|transfer $ROLET| Winner
+
+    UR -->|HTTP poll 1.5s| Solana
+    SK -->|signs turns locally| UR
+    CR -->|seed = hash host‖guest| MS
 ```
 
-**Commit-reveal RNG:** Host and guest each generate a random secret off-chain, hash it (keccak256), and submit the hash on-chain. After both are committed, the match seeds its RNG from `hash(host_secret ‖ guest_secret)`. Neither player can manipulate the outcome — revealing the other's secret first would break the hash.
+**Commit-reveal RNG:** Host and guest each generate a random secret off-chain, hash it (keccak256), and submit the hash on-chain. After both are committed, the match seeds its RNG from `hash(host_secret ‖ guest_secret)`. Neither player can manipulate the outcome.
 
 **Session keys:** Registered on-chain via `register_session_key`. The session keypair signs turns locally, eliminating wallet popups for the entire session duration.
+
+---
+
+## On-chain instructions
+
+| Instruction | Description |
+|-------------|-------------|
+| `init_player_profile` | Create player PDA (one-time enrollment) |
+| `open_lobby` | Host creates LobbyState PDA with host_commit |
+| `join_lobby` | Guest submits guest_commit + guest_secret |
+| `init_match` | Host reveals, seeds RNG, closes lobby, creates MatchState |
+| `register_session_key` | Store ephemeral pubkey + expiry on PlayerProfile |
+| `pull_trigger` | Fire current chamber; apply HP damage |
+| `play_card` | Activate one of 12 tactical cards |
+| `settle_match` | Transfer $ROLET from vault to winner |
+| `init_vault` | Bootstrap treasury PDA (one-time, admin) |
 
 ---
 
@@ -103,20 +129,22 @@ settle_match → winner claims $ROLET
 
 ## Quickstart (local dev)
 
+**Prerequisites:** Rust, Solana CLI, Anchor 0.30.1, Node 20+, pnpm
+
 ```bash
 # 1. Install
 pnpm install
 
 # 2. Build the program
 cd apps/server
-anchor build --no-idl        # --no-idl is required (see HANDOFF §9)
+anchor build --no-idl        # --no-idl required (see HANDOFF §9)
 
 # 3. Deploy to devnet (one-time)
 solana program deploy target/deploy/rolet.so \
   --program-id target/deploy/rolet-keypair.json \
   --url https://api.devnet.solana.com
 
-# 4. Bootstrap vault (creates $ROLET mint + seeds treasury)
+# 4. Bootstrap vault
 RPC_URL=https://api.devnet.solana.com npx tsx scripts/bootstrap-vault.ts
 
 # 5. Frontend
@@ -125,7 +153,7 @@ cp .env.example .env.local   # set NEXT_PUBLIC_RPC_ENDPOINT
 pnpm dev
 ```
 
-Open `http://localhost:3000`. Set wallet to **Devnet** mode.
+Open `http://localhost:3000`. Set wallet to **Devnet** (Phantom: Settings → Developer Settings → Custom RPC).
 
 ---
 
@@ -143,8 +171,9 @@ rolet-web/
 │       └── idl/rolet.json              # Anchor IDL
 ├── packages/shared/
 ├── HANDOFF.md                          # full architecture + gotchas
-├── ROADMAP.md                          # feature backlog
-└── CHECKPOINT-v0.1.md                  # v0.1 snapshot
+├── DEMO-SCRIPT.md                      # recording guide for demo video
+├── PITCH.md                            # hackathon pitch deck content
+└── ROADMAP.md                          # feature backlog
 ```
 
 ---
