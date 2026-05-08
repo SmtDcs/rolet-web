@@ -183,7 +183,12 @@ function DustParticles() {
   return (
     <points ref={points}>
       <bufferGeometry>
-        <bufferAttribute args={[positions, 3]} attach="attributes-position" />
+        <bufferAttribute
+          attach="attributes-position"
+          array={positions}
+          count={count}
+          itemSize={3}
+        />
       </bufferGeometry>
       <pointsMaterial
         color="#6b3a20"
