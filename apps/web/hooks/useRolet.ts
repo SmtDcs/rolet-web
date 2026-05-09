@@ -27,7 +27,7 @@ import type { Rolet } from "@/idl/rolet_types";
 // ============================================================
 const ROLET_PROGRAM_ID = new PublicKey(
   process.env.NEXT_PUBLIC_ROLET_PROGRAM_ID ??
-    (idl as { address: string }).address
+  (idl as { address: string }).address
 );
 
 const ER_ENDPOINT =
@@ -665,8 +665,7 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
 
         emitToast(
           targetSelf ? "info" : "success",
-          `Trigger pulled → ${
-            targetSelf ? "SELF" : "OPPONENT"
+          `Trigger pulled → ${targetSelf ? "SELF" : "OPPONENT"
           } · ${sig.slice(0, 6)}…`
         );
         return sig;
@@ -946,7 +945,7 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
       // PLAN_B: Helius free tier blocks WebSocket. The HTTP poll inside
       // ActiveDuel covers state updates without console-spamming the user
       // with `Connection._wsOnError` events. Subscribe is now a no-op.
-      return () => {};
+      return () => { };
     },
     []
   );
