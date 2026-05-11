@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const UPSTREAM_RPC = process.env.RPCFAST_BACKEND_URL ?? "https://api.devnet.solana.com";
+const RPCFAST_API_KEY = process.env.RPCFAST_API_KEY ?? "";
 
 /**
  * Thin JSON-RPC proxy so the browser never talks to RPC Fast directly
@@ -12,9 +13,12 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.text();
 
+    const upstreamHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (RPCFAST_API_KEY) upstreamHeaders["X-Token"] = RPCFAST_API_KEY;
+
     const upstream = await fetch(UPSTREAM_RPC, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: upstreamHeaders,
       body,
     });
 
