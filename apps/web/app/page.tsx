@@ -12,7 +12,12 @@ const WalletMultiButton = dynamic(
   { ssr: false }
 );
 
-const NAV_ITEMS = ["HOME", "COLLECTION", "PROFILE", "SETTINGS"] as const;
+const NAV_ITEMS = [
+  { label: "HOME", href: "/" },
+  { label: "DUEL", href: "/duel" },
+  { label: "PROFILE", href: "/profile" },
+  { label: "LEADERBOARD", href: "/leaderboard" },
+] as const;
 
 function shortAddress(addr: string) {
   if (addr.length <= 9) return addr;
@@ -39,11 +44,11 @@ function Navbar() {
           <nav className="hidden md:flex gap-6">
             {NAV_ITEMS.map((item) => (
               <Link
-                key={item}
-                href={`/${item.toLowerCase()}`}
+                key={item.label}
+                href={item.href}
                 className="text-xs tracking-[0.25em] text-zinc-500 hover:text-red-500 hover:text-bleed transition-colors"
               >
-                {item}
+                {item.label}
               </Link>
             ))}
           </nav>
