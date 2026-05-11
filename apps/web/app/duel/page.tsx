@@ -1198,27 +1198,20 @@ function Lobby() {
     if (!wallet.publicKey || !profile) { router.push("/profile"); return; }
     setBusy(true);
     try {
-      // Close any stale lobby we may have left from a previous failed attempt
-      const staleKeys = Object.keys(window.sessionStorage).filter(k => k.startsWith("rolet:secret:"));
-      for (const k of staleKeys) {
-        const staleMatchId = new BN(k.replace("rolet:secret:", ""));
-        await rolet.closeLobby(staleMatchId).catch(() => {});
-        window.sessionStorage.removeItem(k);
-      }
-
+      // Scan for an existing open lobby (exclude own lobbies to prevent self-match)
       const openMatchId = await rolet.findOpenLobby(wallet.publicKey);
       if (openMatchId) {
         router.replace(`/duel?join=${openMatchId.toString(16)}&auto=true`);
         return;
       }
 
+      // No open lobby found — host a new one
       const idBytes = new Uint8Array(8);
       crypto.getRandomValues(idBytes);
       const matchId = new BN(idBytes);
       const matchHex = matchId.toString(16);
 
       const { secret, commit } = rolet.generateCommitReveal();
-      // Stash in the same key that initMatch's recallSecret reads
       window.sessionStorage.setItem(
         `rolet:secret:${matchId.toString()}`,
         Buffer.from(secret).toString("hex")
@@ -1302,43 +1295,50 @@ function HostWaiting({ matchId }: { matchId: BN }) {
     ? `${window.location.origin}/duel?join=${matchHex}`
     : `/duel?join=${matchHex}`;
 
-  // Poll lobby every 1.5s for guest.
-  // Also checks every 4s for OTHER open lobbies (race-condition fix: both
-  // players opened lobbies simultaneously — whoever finds the other first
-  // auto-navigates to join instead of waiting forever).
+  // Poll own lobby every 2s for a guest joining.
+  // Cross-check every 6s: if both players opened lobbies simultaneously,
+  // the one with the LARGER matchId abandons theirs and joins the other.
+  // No closeLobby call — abandoned lobbies stay on-chain but don't interfere
+  // because excludeHost filters them from future scans.
   useEffect(() => {
     if (!rolet.program || !wallet.publicKey) return;
     let alive = true;
+
     const poll = setInterval(async () => {
       if (!alive) return;
       try {
         const l = await rolet.fetchLobby(matchId);
         if (alive) setLobby(l);
       } catch { /* swallow */ }
-    }, 1500);
+    }, 2000);
 
-    const crossCheck = setInterval(async () => {
-      if (!alive) return;
-      try {
-        // Stay as host if someone already joined our lobby
-        const myLobby = await rolet.fetchLobby(matchId);
-        if (myLobby?.guest) return;
+    // Delay cross-check by 6s so normal joins have time to complete first
+    const crossCheckTimer = setTimeout(() => {
+      const crossCheck = setInterval(async () => {
+        if (!alive) return;
+        try {
+          const myLobby = await rolet.fetchLobby(matchId);
+          if (myLobby?.guest) return; // Guest arrived — stay as host
 
-        const otherId = await rolet.findOpenLobby(wallet.publicKey!);
-        if (!alive || !otherId) return;
+          const otherId = await rolet.findOpenLobby(wallet.publicKey!);
+          if (!alive || !otherId) return;
 
-        // Deterministic tiebreaker: only the player whose matchId is LARGER
-        // becomes the guest. This prevents both players from cross-joining
-        // each other simultaneously when lobbies open at the same time.
-        if (matchId.gt(otherId)) {
-          router.replace(`/duel?join=${otherId.toString(16)}&auto=true`);
-        }
-        // If our matchId is smaller, we stay as host and wait for the other side to join us.
-      } catch { /* swallow */ }
-    }, 4000);
+          // Only the player with the LARGER matchId crosses over — deterministic
+          if (matchId.gt(otherId)) {
+            router.replace(`/duel?join=${otherId.toString(16)}&auto=true`);
+          }
+        } catch { /* swallow */ }
+      }, 5000);
+      if (!alive) clearInterval(crossCheck);
+      return crossCheck;
+    }, 6000);
 
     rolet.fetchLobby(matchId).then((l) => { if (alive) setLobby(l); });
-    return () => { alive = false; clearInterval(poll); clearInterval(crossCheck); };
+    return () => {
+      alive = false;
+      clearInterval(poll);
+      clearTimeout(crossCheckTimer);
+    };
   }, [rolet, matchId, wallet.publicKey, router]);
 
   const guestReady = !!lobby?.guest;
