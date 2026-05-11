@@ -8,6 +8,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { Connection } from "@solana/web3.js";
 import { resolve } from "@bonfida/spl-name-service";
 import { useRolet, useToasts, emitToast } from "@/hooks/useRolet";
+import { Nav, Footer } from "@/components/Nav";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ProfileSnapshot = any;
@@ -22,17 +23,26 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [history, setHistory] = useState<any[]>([]);
 
-  // Pull existing profile on mount / wallet change.
+  // Pull existing profile + match history on mount / wallet change.
   useEffect(() => {
     if (!rolet.program || !wallet.publicKey) {
       setProfile(null);
+      setHistory([]);
       return;
     }
     let alive = true;
     (async () => {
-      const p = await rolet.fetchProfile();
-      if (alive) setProfile(p);
+      const [p, h] = await Promise.all([
+        rolet.fetchProfile(),
+        rolet.fetchMatchHistory(10),
+      ]);
+      if (alive) {
+        setProfile(p);
+        setHistory(h);
+      }
     })();
     return () => {
       alive = false;
@@ -88,6 +98,7 @@ export default function ProfilePage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden">
+      <Nav />
       <div
         className="absolute inset-0 -z-10"
         style={{
@@ -95,21 +106,6 @@ export default function ProfilePage() {
             "radial-gradient(ellipse at 50% 30%, rgba(80, 35, 15, 0.35) 0%, rgba(10, 6, 4, 1) 65%), #050302",
         }}
       />
-
-      <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between px-6 py-4 border-b border-rust/40 bg-black/40 backdrop-blur-sm">
-        <Link
-          href="/"
-          className="text-[10px] tracking-[0.4em] text-rust hover:text-red-500"
-        >
-          ◄ HOME
-        </Link>
-        <span className="text-[10px] tracking-[0.4em] text-zinc-600">
-          IDENTITY · PLAYER_PROFILE PDA
-        </span>
-        <span className="text-[10px] tracking-[0.4em] text-rust">
-          {profile ? "// REGISTERED" : "// ANONYMOUS"}
-        </span>
-      </div>
 
       <div className="relative mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6 py-24 text-center">
         <span className="text-[10px] tracking-[0.6em] text-zinc-600 mb-4">
@@ -136,7 +132,7 @@ export default function ProfilePage() {
             </span>
           </div>
         ) : profile ? (
-          <ExistingProfileCard profile={profile} />
+          <ExistingProfileCard profile={profile} history={history} walletPubkey={wallet.publicKey?.toBase58() ?? null} />
         ) : (
           <SetupForm
             snsDomain={snsDomain}
@@ -168,6 +164,7 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+      <Footer />
     </main>
   );
 }
@@ -227,38 +224,80 @@ function SetupForm({
   );
 }
 
-function ExistingProfileCard({ profile }: { profile: ProfileSnapshot }) {
+function ExistingProfileCard({
+  profile,
+  history,
+  walletPubkey,
+}: {
+  profile: ProfileSnapshot;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  history: any[];
+  walletPubkey: string | null;
+}) {
   const stats = profile.stats;
   return (
-    <div className="mt-12 w-full max-w-md border border-rust bg-black/70 p-6 text-left">
-      <div className="text-[9px] tracking-[0.4em] text-red-500 text-bleed mb-4">
-        // CARD ON FILE
+    <div className="mt-12 w-full max-w-md text-left">
+      <div className="border border-rust bg-black/70 p-6">
+        <div className="text-[9px] tracking-[0.4em] text-red-500 text-bleed mb-4">
+          // CARD ON FILE
+        </div>
+
+        <Row label="SNS" value={profile.snsDomain || "(none)"} />
+        {profile.snsDomain && (
+          <div className="flex justify-end text-[9px] tracking-[0.3em] text-red-500 mb-2">
+            [✓] VERIFIED OWNER
+          </div>
+        )}
+        <Row
+          label="DURABILITY"
+          value={`${profile.durabilityRemaining}/${profile.durabilityMax}`}
+        />
+        <Row label="MATCHES" value={String(stats.matchesPlayed)} />
+        <Row label="WINS / LOSSES" value={`${stats.wins} / ${stats.losses}`} />
+        <Row label="ELO" value={String(stats.eloRating)} />
+        <Row
+          label="EARNED"
+          value={`${(Number(stats.totalRewardsClaimed) / 1e6).toFixed(2)} $ROLET`}
+        />
+
+        <Link
+          href="/duel"
+          className="mt-6 block text-center border border-red-700 bg-red-950/40 py-3 text-[11px] tracking-[0.3em] text-red-300 hover:bg-red-900/60"
+        >
+          ► ENTER LOBBY
+        </Link>
       </div>
 
-      <Row label="SNS" value={profile.snsDomain || "(none)"} />
-      {profile.snsDomain && (
-        <div className="flex justify-end text-[9px] tracking-[0.3em] text-red-500 mb-2">
-          [✓] VERIFIED OWNER
-        </div>
-      )}
-      <Row
-        label="DURABILITY"
-        value={`${profile.durabilityRemaining}/${profile.durabilityMax}`}
-      />
-      <Row label="MATCHES" value={String(stats.matchesPlayed)} />
-      <Row label="WINS / LOSSES" value={`${stats.wins} / ${stats.losses}`} />
-      <Row label="ELO" value={String(stats.eloRating)} />
-      <Row
-        label="EARNED"
-        value={`${(Number(stats.totalRewardsClaimed) / 1e6).toFixed(2)} $ROLET`}
-      />
-
-      <Link
-        href="/duel"
-        className="mt-6 block text-center border border-red-700 bg-red-950/40 py-3 text-[11px] tracking-[0.3em] text-red-300 hover:bg-red-900/60"
-      >
-        ► ENTER LOBBY
-      </Link>
+      {/* Match history */}
+      <section className="border crt-frame crt-grain border-rust/60 bg-black/70 p-4 mt-6">
+        <div className="text-[10px] tracking-[0.4em] text-rust crt-text mb-3">// RECENT MATCHES</div>
+        {history.length === 0 && (
+          <div className="text-[11px] text-zinc-500">no matches yet</div>
+        )}
+        {history.map((m) => {
+          const won = m.account.winner?.toBase58() === walletPubkey;
+          const oppKey =
+            m.account.playerOne.toBase58() === walletPubkey
+              ? m.account.playerTwo
+              : m.account.playerOne;
+          return (
+            <div
+              key={m.publicKey.toBase58()}
+              className="flex justify-between items-center py-1.5 border-b border-rust/30 text-[11px] crt-text"
+            >
+              <span className={won ? "text-red-400" : "text-zinc-500"}>
+                {won ? "✓ WIN" : "✗ LOSS"}
+              </span>
+              <span className="text-zinc-400">
+                vs {oppKey.toBase58().slice(0, 6)}…
+              </span>
+              <span className="text-zinc-600">
+                {new Date(Number(m.account.matchId)).toLocaleDateString()}
+              </span>
+            </div>
+          );
+        })}
+      </section>
     </div>
   );
 }

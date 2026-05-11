@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Nav, Footer } from "@/components/Nav";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { AnchorProvider, Program } from "@coral-xyz/anchor";
@@ -76,6 +77,7 @@ export default function LeaderboardPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden">
+      <Nav />
       <div
         className="absolute inset-0 -z-10"
         style={{
@@ -83,19 +85,6 @@ export default function LeaderboardPage() {
             "radial-gradient(ellipse at 50% 20%, rgba(80, 20, 20, 0.4) 0%, rgba(10, 6, 4, 1) 65%), #050302",
         }}
       />
-
-      {/* Nav bar */}
-      <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between px-6 py-4 border-b border-rust/40 bg-black/40 backdrop-blur-sm">
-        <Link href="/" className="text-[10px] tracking-[0.4em] text-rust hover:text-red-500">
-          ◄ HOME
-        </Link>
-        <span className="text-[10px] tracking-[0.4em] text-zinc-600">
-          RANKINGS · ON-CHAIN · DEVNET
-        </span>
-        <Link href="/duel" className="text-[10px] tracking-[0.4em] text-rust hover:text-red-500">
-          DUEL ►
-        </Link>
-      </div>
 
       <div className="relative mx-auto flex min-h-screen max-w-4xl flex-col items-center px-4 py-28">
         <span className="text-[10px] tracking-[0.6em] text-zinc-600 mb-4">
@@ -131,6 +120,7 @@ export default function LeaderboardPage() {
           // DATA PULLED VIA getProgramAccounts · PUBLIC DEVNET RPC
         </div>
       </div>
+      <Footer />
     </main>
   );
 }

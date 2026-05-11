@@ -11,6 +11,7 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { useRolet, useToasts, type RoletCard } from "@/hooks/useRolet";
+import { useSound } from "@/hooks/useSound";
 
 const DuelArena3D = dynamic(() => import("@/components/DuelArena3D"), { ssr: false });
 const HandRack3D = dynamic(() => import("@/components/HandRack3D"), { ssr: false });
@@ -199,6 +200,7 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
   // ── Gun state ──────────────────────────────────────────────────────────────
   const [gunHeld, setGunHeld] = useState(false);
   const [firing, setFiring] = useState<"live" | "blank" | null>(null);
+  const { play, muted, toggleMute } = useSound();
 
   const youKey = wallet.publicKey?.toBase58() ?? null;
   const decoded = useMemo(() => decodeMatch(state, youKey), [state, youKey]);
@@ -252,12 +254,20 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
   // settle_match becomes callable. Runs once per terminal status flip.
   const [committed, setCommitted] = useState(false);
   const [settled, setSettled] = useState(false);
+  const matchEndSoundPlayedRef = useRef(false);
   useEffect(() => {
     if (!decoded || decoded.status !== "completed" || committed) return;
     setCommitted(true);
     setLog((l) => ["// match over — committing state to L1…", ...l].slice(0, 24));
     rolet.commitAndUndelegateMatch(matchId);
-  }, [decoded, committed, rolet, matchId]);
+    if (!matchEndSoundPlayedRef.current) {
+      matchEndSoundPlayedRef.current = true;
+      const youWon = decoded.playerOneHp > 0
+        ? decoded.playerOne === youKey
+        : decoded.playerTwo === youKey;
+      play(youWon ? "matchWin" : "matchLose");
+    }
+  }, [decoded, committed, rolet, matchId, youKey, play]);
 
   // Ghost auto-play. Triggers when the current turn belongs to the ghost
   // opponent. We deliberately skip `rolet` from the dep array because the
@@ -314,12 +324,13 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
     const card = decoded.yourHand[selectedSlot];
     if (!card) return;
     setLog((l) => [`> arming card ${CARD_LABEL[card]}…`, ...l].slice(0, 24));
-    await rolet.playCard({
+    const cardResult = await rolet.playCard({
       matchId,
       slot: selectedSlot,
       card,
       currentTurnAuthority: new PublicKey(decoded.currentTurn),
     });
+    if (cardResult) play("cardPlay");
     setSelectedSlot(null);
     // Immediate refetch so the HUD reflects the new state without waiting
     // for the 1.5s poll tick.
@@ -342,10 +353,12 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
       // Full effects: shake + recoil + muzzle flash + fullscreen flash
       triggerShake();
       setFiring("live");
+      play("gunshotLive");
       setTimeout(() => setFiring(null), 650);
     } else {
       // Blank: mechanical click only — no flash, no big shake
       setFiring("blank");
+      play("clickBlank");
       setTimeout(() => setFiring(null), 280);
     }
 
@@ -386,10 +399,11 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
       setHitFlash("player");
       setDamageNums((prev) => [...prev, { id: ++dmgSeq, value: -diff, x: 48 }]);
       triggerShake();
+      play("playerHit");
       setTimeout(() => setHitFlash(null), 550);
     }
     prevPlayerHpRef.current = playerHp;
-  }, [playerHp, triggerShake]);
+  }, [playerHp, triggerShake, play]);
 
   useEffect(() => {
     if (opponentHp === null) return;
@@ -399,6 +413,13 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
     }
     prevOpponentHpRef.current = opponentHp;
   }, [opponentHp]);
+
+  // ── Gun pickup sound — rising edge of gunHeld ─────────────────────────────
+  const prevGunHeldRef = useRef(false);
+  useEffect(() => {
+    if (gunHeld && !prevGunHeldRef.current) play("triggerCock");
+    prevGunHeldRef.current = gunHeld;
+  }, [gunHeld, play]);
 
   // ── Turn change banner + auto-pickup gun on your turn ─────────────────────
   useEffect(() => {
@@ -563,9 +584,14 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
           MATCH 0x{matchId.toString(16).toUpperCase()} · ER://magicblock-edge
           {rolet.isEphemeral && <span className="ml-2 text-red-700">· ER ACTIVE</span>}
         </span>
-        <span className="text-[10px] tracking-[0.4em] text-red-500 animate-pulse crt-text">
-          ● {decoded?.status?.toUpperCase() ?? "AWAITING"}
-        </span>
+        <div className="flex items-center gap-4">
+          <button onClick={toggleMute} className="text-[10px] tracking-[0.4em] text-rust hover:text-red-500 crt-text">
+            {muted ? "🔇 MUTED" : "🔊 ON"}
+          </button>
+          <span className="text-[10px] tracking-[0.4em] text-red-500 animate-pulse crt-text">
+            ● {decoded?.status?.toUpperCase() ?? "AWAITING"}
+          </span>
+        </div>
       </div>
 
       <div className="relative z-10 mx-auto grid h-full max-w-7xl grid-rows-[auto_1fr_auto] gap-3 px-6 pt-16 pb-4 overflow-hidden">
@@ -643,7 +669,7 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
               <HandRack3D
                 hand={decoded?.yourHand ?? [null, null, null, null]}
                 selectedSlot={selectedSlot}
-                onSelect={setSelectedSlot}
+                onSelect={(i) => { setSelectedSlot(i); if (i !== null) play("uiSelect"); }}
                 disabled={!turnIsYours || !!decoded?.silencedYou || rolet.busy}
               />
               {/* Floating PLAY button — appears when a card is selected */}
@@ -662,8 +688,8 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
             <div className="col-span-3 crt-frame crt-grain border border-rust/60 bg-black/70 backdrop-blur-sm p-2 flex flex-col gap-2">
               <div className="text-[8px] tracking-[0.4em] text-rust crt-text">// FIRING SOLUTION</div>
               <div className="grid grid-cols-2 gap-1">
-                <TargetButton label="OPP" active={target === "opponent"} onClick={() => setTarget("opponent")} />
-                <TargetButton label="SELF" active={target === "self"} onClick={() => setTarget("self")} />
+                <TargetButton label="OPP" active={target === "opponent"} onClick={() => { setTarget("opponent"); play("uiSelect"); }} />
+                <TargetButton label="SELF" active={target === "self"} onClick={() => { setTarget("self"); play("uiSelect"); }} />
               </div>
               <motion.button
                 onClick={handlePullTrigger}

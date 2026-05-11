@@ -970,6 +970,28 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
     [program]
   );
 
+  const fetchMatchHistory = useCallback(async (limit = 10) => {
+    if (!programL1 || !wallet.publicKey) return [];
+    const me = wallet.publicKey;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const accountClient = (programL1.account as any).matchState;
+    const [asPlayerOne, asPlayerTwo] = await Promise.all([
+      accountClient.all([{ memcmp: { offset: 8,  bytes: me.toBase58() } }]),
+      accountClient.all([{ memcmp: { offset: 40, bytes: me.toBase58() } }]),
+    ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const all = [...asPlayerOne, ...asPlayerTwo] as any[];
+    const seen = new Set<string>();
+    const unique = all.filter((m) => {
+      const k = m.publicKey.toBase58();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    unique.sort((a, b) => (b.account.matchId as BN).cmp(a.account.matchId as BN));
+    return unique.slice(0, limit);
+  }, [programL1, wallet.publicKey]);
+
   return {
     program,
     connection,
@@ -990,6 +1012,7 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
     fetchProfile,
     fetchVault,
     fetchMatch,
+    fetchMatchHistory,
     subscribeMatch,
     generateCommitReveal,
     openLobby,
