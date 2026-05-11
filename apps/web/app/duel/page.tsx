@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { AnimatePresence, motion } from "motion/react";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BN } from "@coral-xyz/anchor";
@@ -196,6 +197,10 @@ function DuelRouter() {
 // ============================================================
 // Active duel — UI when a real on-chain match exists
 // ============================================================
+// ── Damage number type ───────────────────────────────────────────────────────
+type DamageNum = { id: number; value: number; x: number };
+let dmgSeq = 0;
+
 function ActiveDuel({ matchId }: { matchId: BN }) {
   const wallet = useWallet();
   const rolet = useRolet({ ephemeral: true });
@@ -208,6 +213,15 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
     "// signal acquired — ER://magicblock-edge",
     "// awaiting wallet handshake…",
   ]);
+
+  // ── Animation state ────────────────────────────────────────────────────────
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [hitFlash, setHitFlash] = useState<"player" | "opponent" | null>(null);
+  const [damageNums, setDamageNums] = useState<DamageNum[]>([]);
+  const [showTurnBanner, setShowTurnBanner] = useState(false);
+  const prevPlayerHpRef = useRef<number | null>(null);
+  const prevOpponentHpRef = useRef<number | null>(null);
+  const prevTurnRef = useRef<boolean | null>(null);
 
   const youKey = wallet.publicKey?.toBase58() ?? null;
   const decoded = useMemo(() => decodeMatch(state, youKey), [state, youKey]);
@@ -339,6 +353,7 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
   const handlePullTrigger = async () => {
     if (!decoded) return;
     setLog((l) => [`> trigger → ${target.toUpperCase()}…`, ...l].slice(0, 24));
+    triggerShake();
     await rolet.pullTrigger({
       matchId,
       targetSelf: target === "self",
@@ -347,6 +362,54 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
     const fresh = await rolet.fetchMatch(matchId);
     if (fresh) setState(fresh);
   };
+
+  // ── Screen shake ──────────────────────────────────────────────────────────
+  const triggerShake = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.classList.remove("animate-shake");
+    void el.offsetWidth; // reflow
+    el.classList.add("animate-shake");
+    setTimeout(() => el.classList.remove("animate-shake"), 450);
+  }, []);
+
+  // ── Detect HP changes → hit flash + damage numbers ────────────────────────
+  const opponentHp = decoded
+    ? youKey === decoded.playerOne ? decoded.playerTwoHp : decoded.playerOneHp
+    : 4;
+  const playerHp = decoded
+    ? youKey === decoded.playerOne ? decoded.playerOneHp : decoded.playerTwoHp
+    : 4;
+
+  useEffect(() => {
+    if (playerHp === null) return;
+    if (prevPlayerHpRef.current !== null && playerHp < prevPlayerHpRef.current) {
+      const diff = prevPlayerHpRef.current - playerHp;
+      setHitFlash("player");
+      setDamageNums((prev) => [...prev, { id: ++dmgSeq, value: -diff, x: 48 }]);
+      triggerShake();
+      setTimeout(() => setHitFlash(null), 550);
+    }
+    prevPlayerHpRef.current = playerHp;
+  }, [playerHp, triggerShake]);
+
+  useEffect(() => {
+    if (opponentHp === null) return;
+    if (prevOpponentHpRef.current !== null && opponentHp < prevOpponentHpRef.current) {
+      const diff = prevOpponentHpRef.current - opponentHp;
+      setDamageNums((prev) => [...prev, { id: ++dmgSeq, value: -diff, x: 52 }]);
+    }
+    prevOpponentHpRef.current = opponentHp;
+  }, [opponentHp]);
+
+  // ── Turn change banner ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (prevTurnRef.current === null) { prevTurnRef.current = turnIsYours; return; }
+    if (prevTurnRef.current === turnIsYours) return;
+    prevTurnRef.current = turnIsYours;
+    setShowTurnBanner(true);
+    setTimeout(() => setShowTurnBanner(false), 2200);
+  }, [turnIsYours]);
 
   const opponentStatus: "watching" | "silenced" | "blocking" = useMemo(() => {
     if (!decoded || !youKey) return "watching";
@@ -357,21 +420,82 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
     return "watching";
   }, [decoded, youKey]);
 
-  const opponentHp = decoded
-    ? youKey === decoded.playerOne
-      ? decoded.playerTwoHp
-      : decoded.playerOneHp
-    : 4;
-  const playerHp = decoded
-    ? youKey === decoded.playerOne
-      ? decoded.playerOneHp
-      : decoded.playerTwoHp
-    : 4;
-
   return (
-    <main className="relative min-h-screen overflow-hidden">
+    <main ref={containerRef} className="relative min-h-screen overflow-hidden">
       {/* 3D arena background */}
       <DuelArena3D isYourTurn={turnIsYours} />
+
+      {/* Hit flash overlay */}
+      <AnimatePresence>
+        {hitFlash === "player" && (
+          <motion.div
+            key="hit-flash"
+            className="pointer-events-none fixed inset-0 z-[100]"
+            initial={{ opacity: 0.65 }}
+            animate={{ opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.55, ease: "easeOut" }}
+            style={{ background: "radial-gradient(ellipse at 50% 90%, rgba(255,0,0,0.55) 0%, rgba(140,0,0,0.35) 40%, transparent 70%)" }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Turn banner */}
+      <AnimatePresence>
+        {showTurnBanner && (
+          <motion.div
+            key={turnIsYours ? "your-turn" : "enemy-turn"}
+            className="pointer-events-none fixed inset-x-0 top-1/3 z-[90] flex flex-col items-center"
+            initial={{ opacity: 0, y: -32, scaleX: 1.1 }}
+            animate={{ opacity: 1, y: 0, scaleX: 1 }}
+            exit={{ opacity: 0, y: 24, scale: 0.95 }}
+            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <div className={`px-12 py-4 border-2 backdrop-blur-sm ${
+              turnIsYours
+                ? "border-red-500 bg-black/70"
+                : "border-zinc-600 bg-black/60"
+            }`}>
+              <div className={`font-display tracking-[0.5em] text-4xl ${
+                turnIsYours ? "text-red-400 text-bleed" : "text-zinc-400"
+              }`}>
+                {turnIsYours ? "YOUR TURN" : "ENEMY TURN"}
+              </div>
+              <div className={`mt-1 text-center text-[9px] tracking-[0.6em] ${
+                turnIsYours ? "text-rust" : "text-zinc-600"
+              }`}>
+                {turnIsYours ? "// WEAPON ARMED — CHOOSE ACTION" : "// OPPONENT IS DECIDING"}
+              </div>
+            </div>
+            {/* Scan line effect across banner */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
+              <div className="w-full h-px bg-white animate-scan-line" />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating damage numbers */}
+      <AnimatePresence>
+        {damageNums.map((d) => (
+          <motion.div
+            key={d.id}
+            className="pointer-events-none fixed z-[95] font-display font-bold select-none"
+            style={{ left: `${d.x}%`, top: "45%", color: d.value < 0 ? "#ff3333" : "#33ff88" }}
+            initial={{ opacity: 1, y: 0, scale: 1.4 }}
+            animate={{ opacity: 0, y: -90, scale: 0.8 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.6, ease: "easeOut" }}
+            onAnimationComplete={() =>
+              setDamageNums((prev) => prev.filter((x) => x.id !== d.id))
+            }
+          >
+            <span className="text-5xl" style={{ textShadow: "0 0 20px currentColor, 0 0 40px currentColor" }}>
+              {d.value < 0 ? d.value : `+${d.value}`}
+            </span>
+          </motion.div>
+        ))}
+      </AnimatePresence>
 
       {/* Room atmosphere overlay — kept on top of 3D for CRT feel */}
       <div
@@ -639,7 +763,7 @@ function OpponentHud({
   return (
     <div className="mt-3 flex items-center gap-4 border border-rust/60 bg-black/60 px-4 py-2">
       <div className="text-[10px] tracking-[0.4em] text-zinc-500">OPPONENT</div>
-      <HpStrip hp={hp} maxHp={maxHp} accent="opponent" />
+      <HpBar hp={hp} maxHp={maxHp} accent="opponent" />
       <div className="text-[10px] tracking-[0.4em] text-rust">
         STATUS · {status.toUpperCase()}
       </div>
@@ -667,21 +791,27 @@ function ChamberHud({
         <span className="text-rust">·</span>
         <span className="text-zinc-400">{blankCount} BLANK</span>
       </div>
-      <div className="flex gap-1.5">
+      <div className="flex gap-1.5 items-center">
         {chambers.map((c, i) => {
           const isCurrent = i === currentChamber;
-          const fill =
-            c === "empty"
-              ? "bg-transparent border-rust/30"
-              : c === "live"
-              ? "bg-red-900/70 border-red-700 shadow-[0_0_8px_rgba(180,0,0,0.6)]"
-              : "bg-zinc-700/50 border-zinc-600";
           return (
-            <div
+            <motion.div
               key={i}
-              className={`h-3 w-6 border transition-all ${fill} ${
-                isCurrent ? "scale-y-[1.6] -translate-y-0.5" : ""
-              }`}
+              animate={isCurrent ? {
+                scaleY: [1.6, 1.9, 1.6],
+                boxShadow: ["0 0 8px rgba(220,30,30,0.8)", "0 0 22px rgba(255,40,40,1)", "0 0 8px rgba(220,30,30,0.8)"],
+              } : {
+                scaleY: 1,
+                boxShadow: "none",
+              }}
+              transition={isCurrent ? { duration: 1.2, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}
+              className={`h-3 w-6 border transition-colors ${
+                c === "empty"
+                  ? "bg-transparent border-rust/30"
+                  : c === "live"
+                  ? "bg-red-900/70 border-red-700"
+                  : "bg-zinc-700/50 border-zinc-600"
+              } ${isCurrent ? "-translate-y-0.5" : ""}`}
               title={`Chamber ${i + 1}: ${c}`}
             />
           );
@@ -837,7 +967,7 @@ function PlayerVitals({
         </span>
       </div>
       <div className="mt-3">
-        <HpStrip hp={hp} maxHp={maxHp} accent="player" />
+        <HpBar hp={hp} maxHp={maxHp} accent="player" />
       </div>
       <div className="mt-2 text-[10px] tracking-[0.3em] text-zinc-500">
         HP {hp}/{maxHp}
@@ -846,7 +976,7 @@ function PlayerVitals({
   );
 }
 
-function HpStrip({
+function HpBar({
   hp,
   maxHp,
   accent,
@@ -855,23 +985,56 @@ function HpStrip({
   maxHp: number;
   accent: "player" | "opponent";
 }) {
+  const pct = (hp / maxHp) * 100;
+  const low = hp <= 1;
+  const mid = hp === 2;
+  const barColor = low
+    ? "#dc2020"
+    : mid
+    ? "#cc5500"
+    : accent === "player"
+    ? "#991a1a"
+    : "#7a1212";
+
   return (
-    <div className="flex gap-1.5">
-      {Array.from({ length: maxHp }).map((_, i) => {
-        const alive = i < hp;
-        return (
-          <div
-            key={i}
-            className={`h-3 w-8 border ${
-              alive
-                ? accent === "player"
-                  ? "bg-red-700/80 border-red-500 shadow-[0_0_10px_rgba(220,30,30,0.6)]"
-                  : "bg-red-900/60 border-red-700"
-                : "bg-zinc-900 border-zinc-800"
-            }`}
-          />
-        );
-      })}
+    <div className="w-full">
+      {/* Segmented pips */}
+      <div className="flex gap-1 mb-2">
+        {Array.from({ length: maxHp }).map((_, i) => {
+          const alive = i < hp;
+          return (
+            <motion.div
+              key={i}
+              layout
+              animate={alive ? {
+                backgroundColor: low ? "#ff2020" : mid ? "#dd6600" : barColor,
+                boxShadow: alive && low
+                  ? ["0 0 8px #ff2020aa", "0 0 22px #ff2020", "0 0 8px #ff2020aa"]
+                  : alive
+                  ? `0 0 10px ${barColor}88`
+                  : "none",
+              } : {
+                backgroundColor: "#111",
+                boxShadow: "none",
+              }}
+              transition={low && alive ? {
+                boxShadow: { duration: 0.9, repeat: Infinity, ease: "easeInOut" },
+                backgroundColor: { duration: 0.2 },
+              } : { duration: 0.3 }}
+              className="h-5 flex-1 border border-zinc-800"
+            />
+          );
+        })}
+      </div>
+      {/* Progress bar */}
+      <div className="h-1.5 w-full bg-zinc-900 overflow-hidden">
+        <motion.div
+          className="h-full"
+          animate={{ width: `${pct}%`, backgroundColor: barColor }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          style={{ boxShadow: `0 0 8px ${barColor}` }}
+        />
+      </div>
     </div>
   );
 }
@@ -934,10 +1097,7 @@ function CardSlot({
     return (
       <div
         className="aspect-[3/4] border border-dashed border-rust/40 bg-black/40 flex items-center justify-center"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(45deg, rgba(70,40,18,0.05) 0 6px, transparent 6px 12px)",
-        }}
+        style={{ backgroundImage: "repeating-linear-gradient(45deg, rgba(70,40,18,0.05) 0 6px, transparent 6px 12px)" }}
       >
         <span className="text-[9px] tracking-[0.4em] text-rust/60">EMPTY</span>
       </div>
@@ -945,12 +1105,16 @@ function CardSlot({
   }
 
   return (
-    <button
+    <motion.button
       onClick={onClick}
-      className={`group relative aspect-[3/4] border bg-gradient-to-br from-[#1a0e08] via-[#0e0604] to-[#1a0e08] p-2 text-left transition-all ${
-        selected
-          ? "border-red-600 shadow-[0_0_24px_rgba(220,30,30,0.6)] -translate-y-1"
-          : "border-rust/70 hover:border-red-800 hover:-translate-y-0.5"
+      animate={selected ? {
+        y: -10,
+        boxShadow: ["0 0 20px rgba(220,30,30,0.5)", "0 0 36px rgba(220,30,30,0.85)", "0 0 20px rgba(220,30,30,0.5)"],
+      } : { y: 0, boxShadow: "none" }}
+      whileHover={{ y: selected ? -12 : -4, transition: { duration: 0.15 } }}
+      transition={selected ? { boxShadow: { duration: 1.4, repeat: Infinity, ease: "easeInOut" }, y: { duration: 0.2 } } : { duration: 0.2 }}
+      className={`group relative aspect-[3/4] border bg-gradient-to-br from-[#1a0e08] via-[#0e0604] to-[#1a0e08] p-2 text-left ${
+        selected ? "border-red-600" : "border-rust/70 hover:border-red-800"
       }`}
     >
       <div className="flex items-start justify-between">
@@ -970,9 +1134,9 @@ function CardSlot({
         </div>
       </div>
       {selected && (
-        <div className="pointer-events-none absolute inset-0 border border-red-500/50 animate-pulse" />
+        <div className="pointer-events-none absolute inset-0 border border-red-500/30" />
       )}
-    </button>
+    </motion.button>
   );
 }
 
@@ -1004,20 +1168,30 @@ function ActionPanel({
         />
       </div>
 
-      <button
+      <motion.button
         onClick={onPull}
         disabled={disabled}
-        className={`relative mt-auto py-4 border-2 font-display tracking-[0.4em] text-lg transition-all ${
+        animate={!disabled ? {
+          boxShadow: [
+            "0 0 12px rgba(220,30,30,0.4), inset 0 0 16px rgba(120,0,0,0.3)",
+            "0 0 36px rgba(255,30,30,0.85), inset 0 0 28px rgba(180,0,0,0.55)",
+            "0 0 12px rgba(220,30,30,0.4), inset 0 0 16px rgba(120,0,0,0.3)",
+          ],
+        } : { boxShadow: "none" }}
+        whileHover={!disabled ? { scale: 1.02, transition: { duration: 0.12 } } : {}}
+        whileTap={!disabled ? { scale: 0.97 } : {}}
+        transition={!disabled ? { boxShadow: { duration: 2.0, repeat: Infinity, ease: "easeInOut" } } : {}}
+        className={`relative mt-auto py-4 border-2 font-display tracking-[0.4em] text-lg transition-colors ${
           disabled
             ? "border-rust/40 text-rust/40 cursor-not-allowed"
-            : "border-red-600 bg-gradient-to-b from-red-950/60 to-black text-red-400 text-bleed animate-blood hover:text-red-200"
+            : "border-red-600 bg-gradient-to-b from-red-950/60 to-black text-red-400 text-bleed hover:text-red-200"
         }`}
       >
         ▼ PULL TRIGGER ▼
         <div className="mt-1 text-[8px] tracking-[0.5em] text-rust">
           target → {target.toUpperCase()}
         </div>
-      </button>
+      </motion.button>
     </div>
   );
 }

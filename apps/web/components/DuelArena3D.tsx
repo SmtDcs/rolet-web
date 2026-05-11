@@ -2,12 +2,298 @@
 "use client";
 
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Stars } from "@react-three/drei";
+import {
+  EffectComposer,
+  Bloom,
+  Vignette,
+  ChromaticAberration,
+  Noise,
+} from "@react-three/postprocessing";
 import { useRef, useMemo } from "react";
 import * as THREE from "three";
 
-// ── Opponent: porcelain mask figure ─────────────────────────────────────────
-function OpponentFigure3D({ isYourTurn }: { isYourTurn: boolean }) {
+// ── Camera rig — subtle lean based on turn ────────────────────────────────────
+function CameraRig({ isYourTurn }: { isYourTurn: boolean }) {
+  useFrame(({ camera }) => {
+    const tx = isYourTurn ? 0.18 : -0.18;
+    const ty = isYourTurn ? 0.62 : 0.52;
+    camera.position.x += (tx - camera.position.x) * 0.025;
+    camera.position.y += (ty - camera.position.y) * 0.025;
+    camera.lookAt(0, 0.1, -0.8);
+  });
+  return null;
+}
+
+// ── Procedural revolver ───────────────────────────────────────────────────────
+function Revolver({ spinning }: { spinning: boolean }) {
+  const group = useRef<THREE.Group>(null);
+  const drum = useRef<THREE.Mesh>(null);
+
+  useFrame(({ clock }) => {
+    if (!group.current) return;
+    group.current.position.y = 0.06 + Math.sin(clock.elapsedTime * 0.7) * 0.005;
+    if (drum.current && spinning) {
+      drum.current.rotation.x += 0.04;
+    }
+  });
+
+  const metal = {
+    color: "#282828",
+    roughness: 0.18,
+    metalness: 0.92,
+    envMapIntensity: 1.2,
+  };
+  const darkMetal = { color: "#181818", roughness: 0.25, metalness: 0.88 };
+  const wood = { color: "#3c1a08", roughness: 0.88, metalness: 0.0 };
+
+  return (
+    <group ref={group} position={[0.06, 0.06, -0.1]} rotation={[0, 0.55, 0]}>
+      {/* Main frame */}
+      <mesh>
+        <boxGeometry args={[0.072, 0.155, 0.3]} />
+        <meshStandardMaterial {...metal} />
+      </mesh>
+
+      {/* Barrel */}
+      <mesh position={[0, 0.038, -0.31]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.017, 0.017, 0.4, 12]} />
+        <meshStandardMaterial {...metal} />
+      </mesh>
+      {/* Barrel rib (top) */}
+      <mesh position={[0, 0.058, -0.31]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.006, 0.006, 0.4, 6]} />
+        <meshStandardMaterial {...darkMetal} />
+      </mesh>
+      {/* Muzzle end */}
+      <mesh position={[0, 0.038, -0.515]}>
+        <cylinderGeometry args={[0.014, 0.017, 0.016, 12]} />
+        <meshStandardMaterial {...darkMetal} />
+      </mesh>
+      {/* Muzzle glow dot (subtle) */}
+      <mesh position={[0, 0.038, -0.525]} rotation={[Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.013, 12]} />
+        <meshStandardMaterial
+          color="#ff3300"
+          emissive="#ff2200"
+          emissiveIntensity={0.7}
+        />
+      </mesh>
+
+      {/* Cylinder/Drum */}
+      <mesh ref={drum} position={[0, 0.038, 0.04]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.062, 0.062, 0.06, 6, 1]} />
+        <meshStandardMaterial {...metal} />
+      </mesh>
+      {/* 6 chambers */}
+      {Array.from({ length: 6 }).map((_, i) => {
+        const a = (i / 6) * Math.PI * 2;
+        return (
+          <mesh
+            key={i}
+            position={[
+              Math.sin(a) * 0.033,
+              0.038 + Math.cos(a) * 0.033,
+              0.04,
+            ]}
+            rotation={[Math.PI / 2, 0, 0]}
+          >
+            <cylinderGeometry args={[0.011, 0.011, 0.065, 8]} />
+            <meshStandardMaterial color="#080808" roughness={1} metalness={0} />
+          </mesh>
+        );
+      })}
+
+      {/* Hammer */}
+      <mesh position={[0, 0.094, 0.13]}>
+        <boxGeometry args={[0.024, 0.055, 0.038]} />
+        <meshStandardMaterial {...darkMetal} />
+      </mesh>
+
+      {/* Trigger guard */}
+      <mesh position={[0, -0.082, -0.04]} rotation={[0.5, 0, 0]}>
+        <torusGeometry args={[0.038, 0.007, 6, 16, Math.PI * 0.72]} />
+        <meshStandardMaterial {...metal} />
+      </mesh>
+      {/* Trigger */}
+      <mesh position={[0, -0.075, -0.025]} rotation={[0.85, 0, 0]}>
+        <boxGeometry args={[0.009, 0.036, 0.007]} />
+        <meshStandardMaterial {...metal} />
+      </mesh>
+
+      {/* Grip */}
+      <mesh position={[0, -0.178, 0.09]} rotation={[0.38, 0, 0]}>
+        <boxGeometry args={[0.06, 0.19, 0.09]} />
+        <meshStandardMaterial {...wood} />
+      </mesh>
+      {/* Grip side panels */}
+      {[-0.032, 0.032].map((x, i) => (
+        <mesh key={i} position={[x, -0.178, 0.09]} rotation={[0.38, 0, 0]}>
+          <boxGeometry args={[0.003, 0.185, 0.086]} />
+          <meshStandardMaterial color={i === 0 ? "#2d1006" : "#2d1006"} roughness={0.95} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+// ── Hanging lamp ──────────────────────────────────────────────────────────────
+function HangingLamp() {
+  const bulb = useRef<THREE.Mesh>(null);
+  useFrame(({ clock }) => {
+    if (!bulb.current) return;
+    const flicker = 0.92 + Math.sin(clock.elapsedTime * 47) * 0.04 + Math.sin(clock.elapsedTime * 11) * 0.04;
+    (bulb.current.material as THREE.MeshStandardMaterial).emissiveIntensity = 3.5 * flicker;
+  });
+
+  return (
+    <group position={[0, 2.5, -0.3]}>
+      {/* Cord */}
+      <mesh position={[0, 0.38, 0]}>
+        <cylinderGeometry args={[0.005, 0.005, 0.75, 5]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={1} />
+      </mesh>
+      {/* Shade outer */}
+      <mesh rotation={[Math.PI, 0, 0]}>
+        <coneGeometry args={[0.32, 0.3, 14, 1, true]} />
+        <meshStandardMaterial
+          color="#1a1814"
+          roughness={0.5}
+          metalness={0.75}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      {/* Shade inner (warm bounce) */}
+      <mesh rotation={[Math.PI, 0, 0]} position={[0, 0.01, 0]}>
+        <coneGeometry args={[0.29, 0.28, 14, 1, true]} />
+        <meshStandardMaterial color="#5a2800" emissive="#3a1500" emissiveIntensity={0.5} side={THREE.BackSide} />
+      </mesh>
+      {/* Bulb */}
+      <mesh ref={bulb} position={[0, 0.03, 0]}>
+        <sphereGeometry args={[0.052, 10, 10]} />
+        <meshStandardMaterial
+          color="#ffe8a0"
+          emissive="#ffcc44"
+          emissiveIntensity={3.5}
+          toneMapped={false}
+        />
+      </mesh>
+      {/* Main pool light */}
+      <pointLight position={[0, -0.06, 0]} color="#cc7722" intensity={35} distance={7} decay={2} />
+      {/* Ambient fill from lamp */}
+      <pointLight position={[0, -0.06, 0]} color="#ff8800" intensity={5} distance={12} decay={2} />
+    </group>
+  );
+}
+
+// ── Room environment ──────────────────────────────────────────────────────────
+function Room() {
+  const floorTex = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const c = document.createElement("canvas");
+    c.width = 512; c.height = 512;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#1a0e07";
+    ctx.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 8; i++) {
+      ctx.fillStyle = i % 2 === 0 ? "#160c05" : "#1e1107";
+      ctx.fillRect(0, i * 64, 512, 64);
+      ctx.fillStyle = "#0f0904";
+      ctx.fillRect(0, i * 64, 512, 2);
+    }
+    for (let x = 0; x < 512; x += 3) {
+      for (let y = 0; y < 512; y += 3) {
+        const v = (Math.random() - 0.5) * 0.06;
+        ctx.fillStyle = `rgba(0,0,0,${Math.abs(v)})`;
+        ctx.fillRect(x, y, 3, 3);
+      }
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(2, 2);
+    return t;
+  }, []);
+
+  const wallTex = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const c = document.createElement("canvas");
+    c.width = 256; c.height = 256;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#0f0905";
+    ctx.fillRect(0, 0, 256, 256);
+    for (let y = 0; y < 256; y += 16) {
+      const offset = (Math.floor(y / 16) % 2) * 32;
+      for (let x = -32; x < 256; x += 64) {
+        ctx.fillStyle = "#0b0703";
+        ctx.fillRect(x + offset, y, 60, 14);
+        ctx.fillStyle = "#08060280";
+        ctx.fillRect(x + offset, y + 14, 60, 2);
+      }
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(3, 2);
+    return t;
+  }, []);
+
+  return (
+    <>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]}>
+        <planeGeometry args={[10, 10]} />
+        <meshStandardMaterial map={floorTex ?? undefined} color="#180e06" roughness={0.97} metalness={0} />
+      </mesh>
+      {/* Back wall */}
+      <mesh position={[0, 1.6, -3.4]}>
+        <planeGeometry args={[10, 6]} />
+        <meshStandardMaterial map={wallTex ?? undefined} color="#0e0905" roughness={1} />
+      </mesh>
+      {/* Left wall */}
+      <mesh rotation={[0, Math.PI / 2, 0]} position={[-3.8, 1.6, 0]}>
+        <planeGeometry args={[10, 6]} />
+        <meshStandardMaterial map={wallTex ?? undefined} color="#0c0803" roughness={1} />
+      </mesh>
+      {/* Right wall */}
+      <mesh rotation={[0, -Math.PI / 2, 0]} position={[3.8, 1.6, 0]}>
+        <planeGeometry args={[10, 6]} />
+        <meshStandardMaterial map={wallTex ?? undefined} color="#0c0803" roughness={1} />
+      </mesh>
+      {/* Ceiling */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 2.8, 0]}>
+        <planeGeometry args={[10, 10]} />
+        <meshStandardMaterial color="#080604" roughness={1} />
+      </mesh>
+    </>
+  );
+}
+
+// ── Table ─────────────────────────────────────────────────────────────────────
+function Table() {
+  const mat = { color: "#1c0e06", roughness: 0.92, metalness: 0.02 };
+  const legMat = { color: "#160b04", roughness: 0.96 };
+  return (
+    <group>
+      <mesh position={[0, -0.02, -0.2]}>
+        <boxGeometry args={[2.4, 0.055, 1.7]} />
+        <meshStandardMaterial {...mat} />
+      </mesh>
+      {/* Edge trim */}
+      <mesh position={[0, -0.002, -0.2]}>
+        <boxGeometry args={[2.42, 0.01, 1.72]} />
+        <meshStandardMaterial color="#100804" roughness={0.9} metalness={0.08} />
+      </mesh>
+      {[[-1.05, -0.85], [1.05, -0.85], [-1.05, 0.45], [1.05, 0.45]].map(
+        ([x, z], i) => (
+          <mesh key={i} position={[x, -0.52, z]}>
+            <boxGeometry args={[0.065, 0.97, 0.065]} />
+            <meshStandardMaterial {...legMat} />
+          </mesh>
+        )
+      )}
+    </group>
+  );
+}
+
+// ── Opponent figure ───────────────────────────────────────────────────────────
+function OpponentFigure({ isYourTurn }: { isYourTurn: boolean }) {
   const group = useRef<THREE.Group>(null);
   const eyeL = useRef<THREE.Mesh>(null);
   const eyeR = useRef<THREE.Mesh>(null);
@@ -15,219 +301,183 @@ function OpponentFigure3D({ isYourTurn }: { isYourTurn: boolean }) {
   useFrame(({ clock }) => {
     if (!group.current) return;
     const t = clock.elapsedTime;
-    // Idle float
-    group.current.position.y = 1.4 + Math.sin(t * 1.1) * 0.12;
-    // Subtle sway
-    group.current.rotation.z = Math.sin(t * 0.65) * 0.025;
-    group.current.rotation.y = Math.sin(t * 0.4) * 0.06;
-    // Eye intensity pulse
+    group.current.position.y = 0.7 + Math.sin(t * 0.85) * 0.055;
+    group.current.rotation.z = Math.sin(t * 0.48) * 0.016;
     if (eyeL.current && eyeR.current) {
-      const pulse = 0.7 + Math.sin(t * 2.3) * 0.3;
-      (eyeL.current.material as THREE.MeshStandardMaterial).emissiveIntensity = pulse;
-      (eyeR.current.material as THREE.MeshStandardMaterial).emissiveIntensity = pulse;
+      const p = 0.55 + Math.sin(t * 2.6) * 0.45;
+      (eyeL.current.material as THREE.MeshStandardMaterial).emissiveIntensity = p;
+      (eyeR.current.material as THREE.MeshStandardMaterial).emissiveIntensity = p;
     }
   });
 
   return (
-    <group ref={group} position={[0, 1.4, -0.5]}>
-      {/* Head */}
+    <group ref={group} position={[0, 0.7, -1.45]}>
+      {/* Head — porcelain mask look */}
       <mesh>
-        <sphereGeometry args={[0.42, 32, 32]} />
+        <sphereGeometry args={[0.28, 24, 24]} />
         <meshStandardMaterial
-          color="#cfc5b5"
-          roughness={0.25}
-          metalness={0.08}
-          emissive="#1a0808"
-          emissiveIntensity={0.15}
+          color="#c0b09a"
+          roughness={0.28}
+          metalness={0.06}
+          emissive="#150505"
+          emissiveIntensity={0.2}
         />
       </mesh>
-
-      {/* Crack lines on mask */}
-      <mesh rotation={[0, 0, 0.3]}>
-        <torusGeometry args={[0.25, 0.004, 4, 20, Math.PI * 0.4]} />
-        <meshStandardMaterial color="#3a2018" roughness={1} />
+      {/* Crack */}
+      <mesh rotation={[0, 0, 0.35]} position={[0.05, 0, 0.25]}>
+        <torusGeometry args={[0.18, 0.003, 4, 18, Math.PI * 0.5]} />
+        <meshStandardMaterial color="#2a1008" roughness={1} />
       </mesh>
-
       {/* Left eye socket */}
-      <mesh position={[-0.155, 0.06, 0.38]}>
-        <sphereGeometry args={[0.075, 16, 16]} />
-        <meshStandardMaterial color="#080404" />
+      <mesh position={[-0.092, 0.035, 0.255]}>
+        <sphereGeometry args={[0.042, 10, 10]} />
+        <meshStandardMaterial color="#050102" />
       </mesh>
-      {/* Left eye glow */}
-      <mesh ref={eyeL} position={[-0.155, 0.06, 0.42]}>
-        <sphereGeometry args={[0.028, 12, 12]} />
+      <mesh ref={eyeL} position={[-0.092, 0.035, 0.276]}>
+        <sphereGeometry args={[0.016, 8, 8]} />
         <meshStandardMaterial
-          color="#ff2200"
-          emissive="#ff2200"
+          color="#ff1000"
+          emissive="#ff1000"
           emissiveIntensity={0.8}
+          toneMapped={false}
         />
       </mesh>
-
       {/* Right eye socket */}
-      <mesh position={[0.155, 0.06, 0.38]}>
-        <sphereGeometry args={[0.075, 16, 16]} />
-        <meshStandardMaterial color="#080404" />
+      <mesh position={[0.092, 0.035, 0.255]}>
+        <sphereGeometry args={[0.042, 10, 10]} />
+        <meshStandardMaterial color="#050102" />
       </mesh>
-      {/* Right eye glow */}
-      <mesh ref={eyeR} position={[0.155, 0.06, 0.42]}>
-        <sphereGeometry args={[0.028, 12, 12]} />
+      <mesh ref={eyeR} position={[0.092, 0.035, 0.276]}>
+        <sphereGeometry args={[0.016, 8, 8]} />
         <meshStandardMaterial
-          color="#ff2200"
-          emissive="#ff2200"
+          color="#ff1000"
+          emissive="#ff1000"
           emissiveIntensity={0.8}
+          toneMapped={false}
         />
       </mesh>
-
       {/* Neck */}
-      <mesh position={[0, -0.48, 0]}>
-        <cylinderGeometry args={[0.1, 0.14, 0.22, 12]} />
-        <meshStandardMaterial color="#1a0e08" roughness={0.9} />
+      <mesh position={[0, -0.32, 0]}>
+        <cylinderGeometry args={[0.065, 0.085, 0.14, 10]} />
+        <meshStandardMaterial color="#100806" roughness={0.9} />
       </mesh>
-
       {/* Torso */}
-      <mesh position={[0, -0.92, 0]}>
-        <capsuleGeometry args={[0.28, 0.55, 8, 16]} />
-        <meshStandardMaterial color="#150a06" roughness={0.85} metalness={0.1} />
+      <mesh position={[0, -0.72, 0]}>
+        <boxGeometry args={[0.52, 0.65, 0.28]} />
+        <meshStandardMaterial color="#0c0705" roughness={0.9} metalness={0.06} />
       </mesh>
-
       {/* Shoulders */}
-      <mesh position={[-0.42, -0.72, 0]} rotation={[0, 0, 0.3]}>
-        <capsuleGeometry args={[0.1, 0.28, 6, 10]} />
-        <meshStandardMaterial color="#1a0e08" roughness={0.85} />
-      </mesh>
-      <mesh position={[0.42, -0.72, 0]} rotation={[0, 0, -0.3]}>
-        <capsuleGeometry args={[0.1, 0.28, 6, 10]} />
-        <meshStandardMaterial color="#1a0e08" roughness={0.85} />
-      </mesh>
-
-      {/* Opponent point light — follows character */}
-      <pointLight color="#8b1010" intensity={isYourTurn ? 0.8 : 2.5} distance={3} />
+      {[-0.32, 0.32].map((x, i) => (
+        <mesh key={i} position={[x, -0.6, 0]} rotation={[0, 0, x > 0 ? -0.28 : 0.28]}>
+          <capsuleGeometry args={[0.09, 0.22, 5, 8]} />
+          <meshStandardMaterial color="#0e0806" roughness={0.9} />
+        </mesh>
+      ))}
+      <pointLight
+        color="#9a0808"
+        intensity={isYourTurn ? 0.8 : 2.8}
+        distance={2.5}
+        decay={2}
+      />
     </group>
   );
 }
 
-// ── Player: darker silhouette from behind ────────────────────────────────────
-function PlayerFigure3D({ isYourTurn }: { isYourTurn: boolean }) {
-  const group = useRef<THREE.Group>(null);
-
-  useFrame(({ clock }) => {
-    if (!group.current) return;
-    const t = clock.elapsedTime;
-    // Offset phase from opponent
-    group.current.position.y = -1.3 + Math.sin(t * 0.95 + 1.8) * 0.1;
-    group.current.rotation.z = Math.sin(t * 0.55 + 0.8) * 0.02;
-  });
-
+// ── Bullet casings ────────────────────────────────────────────────────────────
+function BulletCasings() {
+  const casings: [number, number, number, number, number][] = [
+    [-0.3, 0.03, 0.12, 0.3, 1.1],
+    [0.42, 0.03, -0.08, -0.2, 0.8],
+    [-0.05, 0.03, 0.28, 0.9, 0.5],
+    [0.22, 0.03, 0.18, -0.4, 1.6],
+  ];
   return (
-    <group ref={group} position={[0, -1.3, 1.2]} rotation={[0, Math.PI, 0]}>
-      {/* Head — viewed from behind */}
-      <mesh>
-        <sphereGeometry args={[0.36, 32, 32]} />
-        <meshStandardMaterial
-          color="#1a0e08"
-          roughness={0.6}
-          metalness={0.15}
-          emissive="#0a0404"
-          emissiveIntensity={0.3}
-        />
-      </mesh>
-
-      {/* Neck */}
-      <mesh position={[0, -0.42, 0]}>
-        <cylinderGeometry args={[0.09, 0.12, 0.18, 12]} />
-        <meshStandardMaterial color="#0f0806" roughness={0.9} />
-      </mesh>
-
-      {/* Torso */}
-      <mesh position={[0, -0.84, 0]}>
-        <capsuleGeometry args={[0.25, 0.5, 8, 16]} />
-        <meshStandardMaterial color="#0f0806" roughness={0.9} metalness={0.08} />
-      </mesh>
-
-      {/* Shoulders */}
-      <mesh position={[-0.38, -0.65, 0]} rotation={[0, 0, 0.25]}>
-        <capsuleGeometry args={[0.09, 0.24, 6, 10]} />
-        <meshStandardMaterial color="#120a06" roughness={0.9} />
-      </mesh>
-      <mesh position={[0.38, -0.65, 0]} rotation={[0, 0, -0.25]}>
-        <capsuleGeometry args={[0.09, 0.24, 6, 10]} />
-        <meshStandardMaterial color="#120a06" roughness={0.9} />
-      </mesh>
-
-      <pointLight color="#4a1a08" intensity={isYourTurn ? 2.5 : 0.6} distance={3} />
-    </group>
+    <>
+      {casings.map(([x, y, z, ry, rz], i) => (
+        <mesh key={i} position={[x, y, z]} rotation={[0, ry, rz]}>
+          <cylinderGeometry args={[0.011, 0.009, 0.05, 8]} />
+          <meshStandardMaterial color="#b07818" roughness={0.28} metalness={0.92} />
+        </mesh>
+      ))}
+    </>
   );
 }
 
-// ── Atmospheric dust particles ────────────────────────────────────────────────
-function DustParticles() {
-  const points = useRef<THREE.Points>(null);
-  const count = 180;
-
-  const positions = useMemo(() => {
+// ── Dust motes ────────────────────────────────────────────────────────────────
+function DustMotes() {
+  const pts = useRef<THREE.Points>(null);
+  const count = 140;
+  const pos = useMemo(() => {
     const arr = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
-      arr[i * 3]     = (Math.random() - 0.5) * 6;
-      arr[i * 3 + 1] = (Math.random() - 0.5) * 5;
-      arr[i * 3 + 2] = (Math.random() - 0.5) * 4;
+      arr[i * 3]     = (Math.random() - 0.5) * 5.5;
+      arr[i * 3 + 1] = Math.random() * 3.2 - 0.4;
+      arr[i * 3 + 2] = (Math.random() - 0.5) * 5;
     }
     return arr;
   }, []);
 
   useFrame(({ clock }) => {
-    if (!points.current) return;
-    points.current.rotation.y = clock.elapsedTime * 0.025;
-    points.current.rotation.x = Math.sin(clock.elapsedTime * 0.015) * 0.05;
+    if (!pts.current) return;
+    pts.current.rotation.y = clock.elapsedTime * 0.012;
+    pts.current.position.y = Math.sin(clock.elapsedTime * 0.08) * 0.04;
   });
 
   return (
-    <points ref={points}>
+    <points ref={pts}>
       <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        <bufferAttribute attach="attributes-position" args={[pos, 3]} />
       </bufferGeometry>
       <pointsMaterial
-        color="#6b3a20"
-        size={0.018}
+        color="#8a5228"
+        size={0.013}
         sizeAttenuation
         transparent
-        opacity={0.55}
+        opacity={0.38}
       />
     </points>
   );
 }
 
-// ── Table surface ─────────────────────────────────────────────────────────────
-function Table() {
-  return (
-    <mesh position={[0, 0.05, 0.3]} rotation={[-0.12, 0, 0]}>
-      <boxGeometry args={[2.8, 0.06, 1.6]} />
-      <meshStandardMaterial color="#0d0806" roughness={0.95} metalness={0.05} />
-    </mesh>
-  );
-}
+// ── ChromaticAberration offset (stable ref) ───────────────────────────────────
+const CA_OFFSET = new THREE.Vector2(0.0009, 0.0009);
 
-// ── Main scene ────────────────────────────────────────────────────────────────
+// ── Main export ───────────────────────────────────────────────────────────────
 export default function DuelArena3D({ isYourTurn }: { isYourTurn: boolean }) {
   return (
     <Canvas
-      camera={{ position: [0, 0.3, 4.8], fov: 52 }}
-      gl={{ antialias: true, alpha: true }}
+      camera={{ position: [0.18, 0.62, 2.05], fov: 66 }}
+      gl={{
+        antialias: true,
+        alpha: true,
+        toneMapping: THREE.ACESFilmicToneMapping,
+        toneMappingExposure: 0.75,
+      }}
       style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
     >
-      {/* Lights */}
-      <ambientLight intensity={0.08} />
-      <pointLight position={[0, 5, 0]} color="#6b0a0a" intensity={3} distance={12} />
-      <pointLight position={[-3, 2, 1]} color="#3a1a0a" intensity={1.8} distance={8} />
-      <pointLight position={[3, 2, 1]} color="#200a0a" intensity={1.2} distance={8} />
-      <pointLight position={[0, -2, 3]} color="#1a0808" intensity={0.8} distance={6} />
+      <fog attach="fog" args={["#060301", 5, 16]} />
+      <ambientLight intensity={0.03} color="#1a0800" />
 
-      <fog attach="fog" args={["#040202", 6, 16]} />
-
-      <Stars radius={18} depth={8} count={600} factor={1.2} fade speed={0.4} />
-      <DustParticles />
+      <CameraRig isYourTurn={isYourTurn} />
+      <Room />
+      <HangingLamp />
       <Table />
-      <OpponentFigure3D isYourTurn={isYourTurn} />
-      <PlayerFigure3D isYourTurn={isYourTurn} />
+      <Revolver spinning={!isYourTurn} />
+      <BulletCasings />
+      <DustMotes />
+      <OpponentFigure isYourTurn={isYourTurn} />
+
+      <EffectComposer>
+        <Bloom
+          intensity={1.1}
+          luminanceThreshold={0.55}
+          luminanceSmoothing={0.5}
+          mipmapBlur
+        />
+        <ChromaticAberration offset={CA_OFFSET} />
+        <Noise opacity={0.038} />
+        <Vignette eskil={false} offset={0.28} darkness={0.92} />
+      </EffectComposer>
     </Canvas>
   );
 }

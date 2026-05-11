@@ -271,20 +271,19 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
   const sendWithSessionKey = useCallback(
     async (tx: Transaction): Promise<string> => {
       if (!sessionKey) throw new Error("No active session key");
-      // CRITICAL: always send to L1 until ER delegation actually works.
-      // Routing through erConnection while the match is NOT delegated causes
-      // the ER endpoint to fake-confirm the tx without writing to the L1
-      // PDA — silently dropped state changes.
       const conn = l1Connection;
       tx.feePayer = sessionKey.keypair.publicKey;
-      const { blockhash } = await conn.getLatestBlockhash();
+      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
       tx.recentBlockhash = blockhash;
       tx.sign(sessionKey.keypair);
       const sig = await conn.sendRawTransaction(tx.serialize(), {
         skipPreflight: true,
-        maxRetries: 2,
+        maxRetries: 5,
       });
-      await conn.confirmTransaction(sig, "confirmed");
+      await conn.confirmTransaction(
+        { signature: sig, blockhash, lastValidBlockHeight },
+        "confirmed"
+      );
       return sig;
     },
     [l1Connection, sessionKey]
@@ -314,14 +313,34 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
           .rpc({ commitment: "confirmed" });
         emitToast("success", `Session registered · ${regSig.slice(0, 6)}…`);
 
-        // 2. Fund the session keypair via devnet airdrop (no wallet popup).
-        //    On mainnet this would need a wallet transfer instead.
+        // 2. Fund the session keypair so it can pay tx fees.
+        //    Try devnet airdrop first (no popup). If rate-limited, fall back
+        //    to a small wallet transfer (one popup, then turns stay popup-free).
+        let funded = false;
         try {
-          const sig = await l1Connection.requestAirdrop(kp.publicKey, 0.005 * LAMPORTS_PER_SOL);
-          await l1Connection.confirmTransaction(sig, "confirmed");
+          const airdropSig = await l1Connection.requestAirdrop(kp.publicKey, 0.005 * LAMPORTS_PER_SOL);
+          await l1Connection.confirmTransaction(airdropSig, "confirmed");
+          funded = true;
         } catch {
-          // Airdrop is best-effort — devnet faucet can be rate-limited.
-          emitToast("info", "Session funding skipped — airdrop rate-limited");
+          // Airdrop rate-limited — fall back to wallet transfer.
+        }
+        if (!funded && wallet.signTransaction) {
+          try {
+            emitToast("info", "Airdrop rate-limited — funding session key from wallet (1 popup)…");
+            const fundIx = SystemProgram.transfer({
+              fromPubkey: wallet.publicKey!,
+              toPubkey: kp.publicKey,
+              lamports: 0.005 * LAMPORTS_PER_SOL,
+            });
+            const fundTx = new Transaction().add(fundIx);
+            fundTx.feePayer = wallet.publicKey!;
+            fundTx.recentBlockhash = (await l1Connection.getLatestBlockhash()).blockhash;
+            const signed = await wallet.signTransaction(fundTx);
+            const fundSig = await l1Connection.sendRawTransaction(signed.serialize());
+            await l1Connection.confirmTransaction(fundSig, "confirmed");
+          } catch {
+            emitToast("info", "Session key unfunded — turns will require wallet approval");
+          }
         }
 
         const state: SessionKeyState = {
@@ -580,22 +599,19 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
             : wallet.publicKey,
         };
 
-        // CRITICAL: until Rust-side delegate_match_state is implemented,
-        // route ALL play_card / pull_trigger txs through L1 even when a
-        // session key is armed. ER endpoint accepts the tx but doesn't
-        // write to the un-delegated PDA → state silently doesn't change.
-        const target = programL1;
-
+        // Actor is a Signer on-chain — when a session key is armed it must
+        // sign the tx itself (wallet signing won't satisfy the constraint).
+        // Always route through L1 (ER delegation not implemented).
         let sig: string;
-        if (ephemeral && sessionKey) {
-          const ix = await target.methods
+        if (sessionKey) {
+          const ix = await programL1.methods
             .playCard(slot, cardArg(card) as never)
             .accounts(accounts as never)
             .instruction();
           const tx = new Transaction().add(ix);
           sig = await sendWithSessionKey(tx);
         } else {
-          sig = await target.methods
+          sig = await programL1.methods
             .playCard(slot, cardArg(card) as never)
             .accounts(accounts as never)
             .rpc();
@@ -638,18 +654,17 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
             : wallet.publicKey,
         };
 
-        const target = ephemeral && sessionKey && programER ? programER : programL1;
-
+        // Actor is a Signer on-chain — session key must sign, not wallet.
         let sig: string;
-        if (ephemeral && sessionKey) {
-          const ix = await target.methods
+        if (sessionKey) {
+          const ix = await programL1.methods
             .pullTrigger(targetSelf)
             .accounts(accounts as never)
             .instruction();
           const tx = new Transaction().add(ix);
           sig = await sendWithSessionKey(tx);
         } else {
-          sig = await target.methods
+          sig = await programL1.methods
             .pullTrigger(targetSelf)
             .accounts(accounts as never)
             .rpc();
