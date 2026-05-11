@@ -676,7 +676,7 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
               {selectedSlot !== null && decoded?.yourHand[selectedSlot] && (
                 <button
                   onClick={handlePlayCard}
-                  disabled={rolet.busy}
+                  disabled={rolet.busy || !turnIsYours}
                   className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 border border-red-500 bg-black/85 backdrop-blur-sm px-4 py-1.5 text-[10px] tracking-[0.4em] text-red-300 font-bold shadow-[0_0_18px_rgba(220,30,30,0.6)] hover:bg-red-950/60 disabled:opacity-40 crt-text"
                 >
                   ▶ PLAY {CARD_LABEL[decoded.yourHand[selectedSlot]!].toUpperCase()}
