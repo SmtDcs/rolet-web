@@ -3,6 +3,52 @@
 import Link from "next/link";
 import { Nav, Footer } from "@/components/Nav";
 
+// ── Floating eyes ─────────────────────────────────────────────────────────────
+function GhostEyes() {
+  return (
+    <div className="pointer-events-none flex items-center gap-10 animate-float">
+      {[0, 1].map((i) => (
+        <div
+          key={i}
+          className="relative"
+          style={{
+            width: 72,
+            height: 44,
+            filter: "drop-shadow(0 0 14px rgba(200,20,20,0.85))",
+          }}
+        >
+          {/* Eyelid outer */}
+          <svg viewBox="0 0 72 44" width="72" height="44" xmlns="http://www.w3.org/2000/svg">
+            {/* White (sclera) */}
+            <ellipse cx="36" cy="22" rx="34" ry="20" fill="#1a0808" stroke="#5a1010" strokeWidth="1.5" />
+            {/* Iris */}
+            <ellipse
+              cx="36"
+              cy="22"
+              rx="16"
+              ry="16"
+              fill="#1a0000"
+              stroke="#cc1111"
+              strokeWidth="1"
+              style={{ animation: "rolet-eye-glow 3s ease-in-out infinite", animationDelay: `${i * 0.4}s` }}
+            />
+            {/* Pupil */}
+            <ellipse cx="36" cy="22" rx="7" ry="7" fill="#000" />
+            {/* Glint */}
+            <ellipse cx="30" cy="17" rx="3" ry="2" fill="rgba(255,80,80,0.55)" />
+            {/* Top lid — blink clips the iris */}
+            <ellipse cx="36" cy="2" rx="34" ry="20" fill="#0a0807"
+              style={{ animation: `rolet-blink 5s ease-in-out infinite`, animationDelay: `${i * 0.15 + 0.2}s` }}
+            />
+            {/* Bottom lid */}
+            <ellipse cx="36" cy="42" rx="34" ry="20" fill="#0a0807" />
+          </svg>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Hero section ──────────────────────────────────────────────────────────────
 function Hero() {
   return (
@@ -40,13 +86,17 @@ function Hero() {
           // ON-CHAIN RUSSIAN ROULETTE · PROVABLY FAIR · SOLANA
         </p>
 
-        <div className="mt-3 flex items-center gap-3 text-[10px] tracking-[0.4em] text-rust">
+        <div className="mt-10">
+          <GhostEyes />
+        </div>
+
+        <div className="mt-8 flex items-center gap-3 text-[10px] tracking-[0.4em] text-rust">
           <span className="h-px w-12 bg-rust" />
           EIGHT CHAMBERS · THREE BLANKS · ONE WALKS OUT
           <span className="h-px w-12 bg-rust" />
         </div>
 
-        <div className="mt-10 flex flex-col sm:flex-row gap-4 items-center">
+        <div className="mt-8 flex flex-col sm:flex-row gap-4 items-center">
           <Link
             href="/duel"
             className="border-2 border-red-600 bg-gradient-to-b from-red-950/60 to-black px-10 py-4 font-display tracking-[0.4em] text-lg text-red-400 text-bleed animate-blood hover:text-red-200 transition-all"
