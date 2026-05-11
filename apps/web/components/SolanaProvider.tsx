@@ -14,17 +14,20 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
     (process.env.NEXT_PUBLIC_SOLANA_NETWORK as WalletAdapterNetwork) ??
     WalletAdapterNetwork.Devnet;
 
-  const endpoint = useMemo(() => {
+  const { endpoint, wsEndpoint } = useMemo(() => {
     const raw = process.env.NEXT_PUBLIC_RPC_ENDPOINT ?? clusterApiUrl(network);
+    const publicWs = "wss://api.devnet.solana.com";
     // Relative paths like "/api/rpc" only work in the browser.
     // During SSR / static build there is no window, so fall back to public devnet.
     if (raw.startsWith("/")) {
       if (typeof window !== "undefined") {
-        return `${window.location.origin}${raw}`;
+        // HTTP goes through the proxy; WebSocket goes directly to devnet
+        // because Next.js API routes don't support WebSocket protocol upgrade.
+        return { endpoint: `${window.location.origin}${raw}`, wsEndpoint: publicWs };
       }
-      return clusterApiUrl(network);
+      return { endpoint: clusterApiUrl(network), wsEndpoint: publicWs };
     }
-    return raw;
+    return { endpoint: raw, wsEndpoint: undefined };
   }, [network]);
 
   // Memoize wallets — re-instantiating breaks the adapter's listeners.
@@ -34,7 +37,7 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <ConnectionProvider endpoint={endpoint}>
+    <ConnectionProvider endpoint={endpoint} config={wsEndpoint ? { wsEndpoint } : undefined}>
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
