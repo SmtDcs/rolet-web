@@ -1,24 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const UPSTREAM_RPC = process.env.RPCFAST_BACKEND_URL ?? "https://api.devnet.solana.com";
-const RPCFAST_API_KEY = process.env.RPCFAST_API_KEY ?? "";
+const UPSTREAM_RPC =
+  process.env.NEXT_PUBLIC_RPC_ENDPOINT ?? "https://api.devnet.solana.com";
 
-/**
- * Thin JSON-RPC proxy so the browser never talks to RPC Fast directly
- * (their Beam product doesn't set CORS headers for browser origins).
- * The frontend sends requests to /api/rpc, and this route forwards them
- * server-side to the real RPC endpoint.
- */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.text();
 
-    const upstreamHeaders: Record<string, string> = { "Content-Type": "application/json" };
-    if (RPCFAST_API_KEY) upstreamHeaders["X-Token"] = RPCFAST_API_KEY;
-
     const upstream = await fetch(UPSTREAM_RPC, {
       method: "POST",
-      headers: upstreamHeaders,
+      headers: { "Content-Type": "application/json" },
       body,
     });
 
