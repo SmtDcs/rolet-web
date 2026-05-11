@@ -1205,10 +1205,10 @@ function Lobby() {
         return;
       }
 
-      // No open lobby found — host a new one
-      const idBytes = new Uint8Array(8);
-      crypto.getRandomValues(idBytes);
-      const matchId = new BN(idBytes);
+      // No open lobby found — host a new one.
+      // Use Date.now() so the matchId is a timestamp; findOpenLobby filters
+      // out lobbies older than 5 minutes by comparing matchId to Date.now()-5min.
+      const matchId = new BN(Date.now().toString());
       const matchHex = matchId.toString(16);
 
       const { secret, commit } = rolet.generateCommitReveal();

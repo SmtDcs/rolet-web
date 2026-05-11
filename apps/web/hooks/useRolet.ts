@@ -482,11 +482,15 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
       const lobbies = await (programL1.account as any).lobbyState.all([
         { memcmp: { offset: 80, bytes: bs58.encode(Uint8Array.from([0])) } },
       ]);
+      // Only consider lobbies opened in the last 5 minutes.
+      // matchId = Date.now() so stale lobbies from previous sessions have
+      // much smaller values and are automatically excluded.
+      const fiveMinutesAgo = new BN(Date.now() - 5 * 60 * 1000);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const filtered = excludeHost
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ? lobbies.filter((l: any) => !l.account.host.equals(excludeHost))
-        : lobbies;
+      const filtered = lobbies.filter((l: any) => {
+        if (excludeHost && l.account.host.equals(excludeHost)) return false;
+        return (l.account.matchId as BN).gt(fiveMinutesAgo);
+      });
       if (filtered.length > 0) {
         return {
           matchId: filtered[0].account.matchId as BN,
