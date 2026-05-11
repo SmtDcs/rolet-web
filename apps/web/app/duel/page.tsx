@@ -1198,7 +1198,15 @@ function Lobby() {
     if (!wallet.publicKey || !profile) { router.push("/profile"); return; }
     setBusy(true);
     try {
-      const openMatchId = await rolet.findOpenLobby();
+      // Close any stale lobby we may have left from a previous failed attempt
+      const staleKeys = Object.keys(window.sessionStorage).filter(k => k.startsWith("rolet:secret:"));
+      for (const k of staleKeys) {
+        const staleMatchId = new BN(k.replace("rolet:secret:", ""));
+        await rolet.closeLobby(staleMatchId).catch(() => {});
+        window.sessionStorage.removeItem(k);
+      }
+
+      const openMatchId = await rolet.findOpenLobby(wallet.publicKey);
       if (openMatchId) {
         router.replace(`/duel?join=${openMatchId.toString(16)}&auto=true`);
         return;
