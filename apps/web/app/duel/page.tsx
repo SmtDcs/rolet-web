@@ -767,28 +767,28 @@ function CCTVViewport({
         />
 
         {/* CCTV chrome — top row */}
-        <div className="absolute top-2 left-3 right-3 flex items-center justify-between text-[9px] tracking-[0.4em] font-mono">
+        <div className="absolute top-2 left-3 right-3 flex items-center justify-between text-[10px] tracking-[0.35em] font-mono font-bold drop-shadow-[0_0_4px_rgba(0,0,0,0.9)]">
           <div className="flex items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_6px_rgba(255,0,0,0.9)]" />
-            <span className="text-red-500">● REC</span>
-            <span className="text-rust/70">CAM_01</span>
-            <span className="text-zinc-700">·</span>
-            <span className="text-rust/70">ARENA-MAIN</span>
+            <span className="text-red-400">● REC</span>
+            <span className="text-amber-200/90">CAM_01</span>
+            <span className="text-zinc-500">·</span>
+            <span className="text-amber-200/90">ARENA-MAIN</span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-zinc-600">0x{matchHex.slice(0, 6).toUpperCase()}</span>
-            <span className="text-rust/70">{time}</span>
+            <span className="text-amber-100/80">0x{matchHex.slice(0, 6).toUpperCase()}</span>
+            <span className="text-amber-300/90">{time}</span>
           </div>
         </div>
 
         {/* Chamber indicator row — overlay at top-center of viewport */}
-        <div className="absolute top-9 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5">
-          <div className="flex items-center gap-3 text-[9px] tracking-[0.45em]">
-            <span className="text-zinc-500">8 CHAMBERS</span>
+        <div className="absolute top-9 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 drop-shadow-[0_0_4px_rgba(0,0,0,0.95)]">
+          <div className="flex items-center gap-3 text-[10px] tracking-[0.35em] font-bold">
+            <span className="text-amber-200/90">8 CHAMBERS</span>
             <span className="text-rust">·</span>
-            <span className="text-red-500 text-bleed">{liveCount} LIVE</span>
+            <span className="text-red-400 text-bleed">{liveCount} LIVE</span>
             <span className="text-rust">·</span>
-            <span className="text-zinc-400">{blankCount} BLANK</span>
+            <span className="text-zinc-200/80">{blankCount} BLANK</span>
           </div>
           <div className="flex gap-1.5 items-center">
             {chambers.map((c, i) => {
@@ -815,29 +815,15 @@ function CCTVViewport({
         </div>
 
         {/* Bottom-status strip */}
-        <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between text-[9px] tracking-[0.4em] font-mono">
-          <span className="text-rust/80">
+        <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between text-[10px] tracking-[0.35em] font-mono font-bold drop-shadow-[0_0_4px_rgba(0,0,0,0.95)]">
+          <span className={turnIsYours ? "text-red-400" : "text-amber-200/85"}>
             {turnIsYours ? "▶ FIRING SOLUTION ARMED" : "◌ AWAITING OPPONENT"}
           </span>
-          <span className="text-zinc-600">
+          <span className="text-amber-100/70">
             FEED · 1280x720 · 30FPS · DEVNET
           </span>
         </div>
 
-        {/* Crosshair when it's your turn */}
-        {turnIsYours && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <motion.div
-              className="relative h-16 w-16"
-              animate={{ opacity: [0.4, 0.85, 0.4] }}
-              transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
-            >
-              <div className="absolute inset-0 border border-red-500/70 rounded-full" />
-              <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-red-500/50" />
-              <div className="absolute top-1/2 left-0 w-full h-px -translate-y-1/2 bg-red-500/50" />
-            </motion.div>
-          </div>
-        )}
       </div>
     </div>
   );
