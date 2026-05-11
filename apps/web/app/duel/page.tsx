@@ -223,6 +223,10 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
   const prevOpponentHpRef = useRef<number | null>(null);
   const prevTurnRef = useRef<boolean | null>(null);
 
+  // ── Gun state ──────────────────────────────────────────────────────────────
+  const [gunHeld, setGunHeld] = useState(false);
+  const [firing, setFiring] = useState(false);
+
   const youKey = wallet.publicKey?.toBase58() ?? null;
   const decoded = useMemo(() => decodeMatch(state, youKey), [state, youKey]);
 
@@ -354,6 +358,8 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
     if (!decoded) return;
     setLog((l) => [`> trigger → ${target.toUpperCase()}…`, ...l].slice(0, 24));
     triggerShake();
+    setFiring(true);
+    setTimeout(() => setFiring(false), 650);
     await rolet.pullTrigger({
       matchId,
       targetSelf: target === "self",
@@ -402,13 +408,16 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
     prevOpponentHpRef.current = opponentHp;
   }, [opponentHp]);
 
-  // ── Turn change banner ────────────────────────────────────────────────────
+  // ── Turn change banner + auto-pickup gun on your turn ─────────────────────
   useEffect(() => {
     if (prevTurnRef.current === null) { prevTurnRef.current = turnIsYours; return; }
     if (prevTurnRef.current === turnIsYours) return;
     prevTurnRef.current = turnIsYours;
     setShowTurnBanner(true);
     setTimeout(() => setShowTurnBanner(false), 2200);
+    // Pick up the gun automatically when it becomes your turn,
+    // put it back on the table when it doesn't.
+    setGunHeld(turnIsYours);
   }, [turnIsYours]);
 
   const opponentStatus: "watching" | "silenced" | "blocking" = useMemo(() => {
@@ -421,9 +430,19 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
   }, [decoded, youKey]);
 
   return (
-    <main ref={containerRef} className="relative min-h-screen overflow-hidden">
-      {/* 3D arena background */}
-      <DuelArena3D isYourTurn={turnIsYours} />
+    <main
+      ref={containerRef}
+      className="fixed inset-0 overflow-hidden"
+      style={{ width: "100vw", height: "100vh" }}
+    >
+      {/* 3D arena background — covers entire viewport, behind everything */}
+      <DuelArena3D
+        isYourTurn={turnIsYours}
+        gunHeld={gunHeld}
+        setGunHeld={setGunHeld}
+        target={target}
+        firing={firing}
+      />
 
       {/* Hit flash overlay */}
       <AnimatePresence>
@@ -529,7 +548,7 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
         </span>
       </div>
 
-      <div className="relative z-10 mx-auto grid min-h-screen max-w-7xl grid-rows-[auto_1fr_auto] gap-3 px-6 pt-16 pb-6">
+      <div className="relative z-10 mx-auto grid h-full max-w-7xl grid-rows-[auto_1fr_auto] gap-3 px-6 pt-16 pb-4 overflow-hidden">
         {/* OPPONENT HUD ONLY (HP bar + status) — 3D shows through behind */}
         <section className="relative flex justify-center pt-2">
           <OpponentHud hp={opponentHp} maxHp={4} status={opponentStatus} />
@@ -600,7 +619,7 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
           </div>
 
           {/* Cursed terminal log — sourced from real toasts + ER deltas */}
-          <div className="border border-rust/50 bg-black/35 backdrop-blur-md px-4 py-3 max-h-32 overflow-hidden">
+          <div className="border border-rust/50 bg-black/70 backdrop-blur-sm px-4 py-3 max-h-32 overflow-hidden">
             <div className="flex items-center justify-between">
               <div className="text-[9px] tracking-[0.4em] text-rust">// LOG</div>
               <div className="text-[9px] tracking-[0.4em] text-zinc-700">
@@ -687,8 +706,10 @@ function CCTVViewport({
   }, []);
 
   return (
-    <div className="relative w-full max-w-5xl">
-      {/* CCTV frame — transparent interior so 3D shows through */}
+    <div className="pointer-events-none relative w-full max-w-5xl">
+      {/* CCTV frame — transparent interior so 3D shows through.
+          pointer-events-none on the outer wrapper so clicks pass to the
+          Canvas behind (gun is interactive). */}
       <div
         className="relative aspect-[16/8] border-2 border-rust/70 bg-transparent"
         style={{
@@ -798,7 +819,7 @@ function OpponentHud({
   status: string;
 }) {
   return (
-    <div className="mt-3 flex items-center gap-4 border border-rust/60 bg-black/35 backdrop-blur-md px-4 py-2">
+    <div className="mt-3 flex items-center gap-4 border border-rust/60 bg-black/70 backdrop-blur-sm px-4 py-2">
       <div className="text-[10px] tracking-[0.4em] text-zinc-500">OPPONENT</div>
       <HpBar hp={hp} maxHp={maxHp} accent="opponent" />
       <div className="text-[10px] tracking-[0.4em] text-rust">
@@ -818,7 +839,7 @@ function PlayerVitals({
   turnIsYours: boolean;
 }) {
   return (
-    <div className="col-span-3 border border-rust/60 bg-black/35 backdrop-blur-md p-3">
+    <div className="col-span-3 border border-rust/60 bg-black/70 backdrop-blur-sm p-3">
       <div className="flex items-center justify-between text-[9px] tracking-[0.4em] text-rust">
         <span>// SUBJECT_01 (YOU)</span>
         <span className={turnIsYours ? "text-red-500 animate-pulse" : "text-zinc-700"}>
@@ -912,7 +933,7 @@ function HandRack({
   disabled: boolean;
 }) {
   return (
-    <div className="col-span-6 border border-rust/60 bg-black/35 backdrop-blur-md p-3">
+    <div className="col-span-6 border border-rust/60 bg-black/70 backdrop-blur-sm p-3">
       <div className="flex items-center justify-between text-[9px] tracking-[0.4em] text-rust mb-3">
         <span>// HAND · 4 SLOTS</span>
         {selectedSlot !== null && hand[selectedSlot] && (
@@ -1011,7 +1032,7 @@ function ActionPanel({
   disabled: boolean;
 }) {
   return (
-    <div className="col-span-3 border border-rust/60 bg-black/35 backdrop-blur-md p-3 flex flex-col gap-3">
+    <div className="col-span-3 border border-rust/60 bg-black/70 backdrop-blur-sm p-3 flex flex-col gap-3">
       <div className="text-[9px] tracking-[0.4em] text-rust">// FIRING SOLUTION</div>
 
       <div className="grid grid-cols-2 gap-2">

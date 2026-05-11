@@ -1,7 +1,7 @@
 /// <reference types="@react-three/fiber" />
 "use client";
 
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber";
 import { useGLTF, Html } from "@react-three/drei";
 import {
   EffectComposer,
@@ -10,13 +10,15 @@ import {
   Pixelation,
   Noise,
 } from "@react-three/postprocessing";
-import { Suspense, useEffect, useMemo, useRef } from "react";
+import { Suspense, useMemo, useRef } from "react";
 import * as THREE from "three";
 
 const MODEL_TABLE = "/models/table.glb";
 const MODEL_REVOLVER = "/models/revolver.glb";
 const MODEL_LANTERN = "/models/lantern.glb";
 const MODEL_BULLET = "/models/mermi.glb";
+
+export type GunTarget = "self" | "opponent";
 
 // ── Loading fallback ──────────────────────────────────────────────────────────
 function LoadingText() {
@@ -87,14 +89,12 @@ function HangingSpot() {
   useFrame(({ clock }) => {
     if (!light.current) return;
     const t = clock.elapsedTime;
-    // Random flicker — mostly stable, occasional dim dip
     const flicker =
       0.92 +
       Math.sin(t * 53.7) * 0.05 +
       Math.sin(t * 17.1) * 0.04 +
       (Math.random() < 0.012 ? -0.45 : 0);
     light.current.intensity = Math.max(0.1, baseIntensity * flicker);
-    // Subtle sway as if hanging on a cord
     light.current.position.x = Math.sin(t * 0.6) * 0.04;
     light.current.position.z = Math.cos(t * 0.5) * 0.03;
   });
@@ -122,66 +122,179 @@ function HangingSpot() {
   );
 }
 
-// ── Camera rig — fixed, slight high-angle creepy tilt ─────────────────────────
+// ── Camera — fixed creepy high-angle view of the table ────────────────────────
 function CameraInit() {
   useFrame(({ camera, clock }) => {
-    // Almost-static, but breathes a tiny amount so it doesn't look frozen.
-    // Pulled in tighter so the table + revolver fill the CCTV viewport.
-    const sway = Math.sin(clock.elapsedTime * 0.3) * 0.01;
-    camera.position.set(0.12 + sway, 0.82, 1.05);
+    const sway = Math.sin(clock.elapsedTime * 0.3) * 0.008;
+    camera.position.set(0.05 + sway, 0.78, 1.15);
     camera.lookAt(0, 0.0, -0.05);
   });
   return null;
 }
 
+// ── Interactive revolver with state machine ──────────────────────────────────
+// Idle on table  ←→  Raised in front of camera (held)
+//   - Self target: barrel rotated toward camera
+//   - Opponent target: barrel pointed away
+//   - Fire: brief recoil punch + muzzle flash
+function InteractiveRevolver({
+  held,
+  target,
+  firing,
+  onPickup,
+}: {
+  held: boolean;
+  target: GunTarget;
+  firing: boolean;
+  onPickup: () => void;
+}) {
+  const group = useRef<THREE.Group>(null);
+  const muzzleFlash = useRef<THREE.PointLight>(null);
+  const { scene } = useGLTF(MODEL_REVOLVER);
+  const model = useMemo(() => {
+    const cloned = scene.clone(true);
+    cloned.traverse((obj) => {
+      if ((obj as THREE.Mesh).isMesh) {
+        const m = obj as THREE.Mesh;
+        m.castShadow = true;
+        const mats = Array.isArray(m.material) ? m.material : [m.material];
+        mats.forEach((mat) => {
+          if (mat instanceof THREE.MeshStandardMaterial) {
+            mat.roughness = Math.min(mat.roughness + 0.15, 1);
+            mat.metalness = Math.min(mat.metalness + 0.1, 1);
+          }
+        });
+      }
+    });
+    return cloned;
+  }, [scene]);
+
+  // Pose targets ──────────────────────────────────────────────────────────────
+  // ON_TABLE  — laying on the table, grip toward player
+  const TABLE_POS = useMemo(() => new THREE.Vector3(0.05, 0.05, 0.0), []);
+  const TABLE_EUL = useMemo(() => new THREE.Euler(0, 0.55, 0), []);
+
+  // HELD aiming at OPPONENT — close to camera, barrel forward (-Z)
+  const HELD_OPP_POS = useMemo(() => new THREE.Vector3(0.25, 0.42, 0.5), []);
+  const HELD_OPP_EUL = useMemo(() => new THREE.Euler(0, Math.PI, 0), []);
+
+  // HELD aiming at SELF — pointing back at camera
+  const HELD_SELF_POS = useMemo(() => new THREE.Vector3(0.18, 0.4, 0.45), []);
+  const HELD_SELF_EUL = useMemo(() => new THREE.Euler(0, 0, 0), []);
+
+  // Fire state (internal): keeps recoil playing for ~600ms even if prop flips
+  const fireStartedAt = useRef<number | null>(null);
+  useFrame((state, delta) => {
+    if (!group.current) return;
+    const lerp = Math.min(1, delta * 5);
+
+    const targetPos = held
+      ? target === "self" ? HELD_SELF_POS : HELD_OPP_POS
+      : TABLE_POS;
+    const targetEul = held
+      ? target === "self" ? HELD_SELF_EUL : HELD_OPP_EUL
+      : TABLE_EUL;
+
+    // Lerp position
+    group.current.position.lerp(targetPos, lerp);
+    // Lerp Euler (per-axis)
+    group.current.rotation.x += (targetEul.x - group.current.rotation.x) * lerp;
+    group.current.rotation.y += (targetEul.y - group.current.rotation.y) * lerp;
+    group.current.rotation.z += (targetEul.z - group.current.rotation.z) * lerp;
+
+    // Idle float when on table, gentle aim sway when held
+    const t = state.clock.elapsedTime;
+    if (!held) {
+      group.current.position.y += Math.sin(t * 0.8) * 0.003;
+    } else {
+      // Aim sway
+      group.current.position.x += Math.sin(t * 1.3) * 0.0015;
+      group.current.position.y += Math.cos(t * 1.7) * 0.0015;
+    }
+
+    // Recoil — short backward kick + slight upward tilt
+    if (firing && fireStartedAt.current === null) {
+      fireStartedAt.current = t;
+    }
+    if (fireStartedAt.current !== null) {
+      const elapsed = t - fireStartedAt.current;
+      if (elapsed < 0.65) {
+        // Ease-out pulse
+        const e = Math.max(0, 1 - elapsed / 0.65);
+        const kick = Math.sin(elapsed * 25) * e * 0.06;
+        const tiltX = e * 0.18;
+        group.current.position.z += kick;
+        group.current.rotation.x -= tiltX * delta * 4;
+
+        if (muzzleFlash.current) {
+          muzzleFlash.current.intensity = e * 18;
+        }
+      } else {
+        fireStartedAt.current = null;
+        if (muzzleFlash.current) muzzleFlash.current.intensity = 0;
+      }
+    } else if (muzzleFlash.current) {
+      muzzleFlash.current.intensity = 0;
+    }
+  });
+
+  // Muzzle flash light position (in front of barrel — flips with target)
+  const flashZ = held && target === "opponent" ? -0.5 : 0.5;
+
+  const handleClick = (e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();
+    onPickup();
+  };
+
+  return (
+    <group
+      ref={group}
+      scale={0.18}
+      onClick={handleClick}
+      onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = held ? "default" : "pointer"; }}
+      onPointerOut={() => { document.body.style.cursor = "default"; }}
+    >
+      <primitive object={model} />
+      <pointLight ref={muzzleFlash} position={[0, 0.15, flashZ]} color="#ffaa22" intensity={0} distance={3} decay={2} />
+    </group>
+  );
+}
+
 // ── Scene contents ────────────────────────────────────────────────────────────
-function Scene({ isYourTurn }: { isYourTurn: boolean }) {
-  // Floor catches the spotlight's hard shadow — kept dark so we just see the
-  // pool of light, not the whole floor.
+function Scene({
+  gunHeld,
+  setGunHeld,
+  target,
+  firing,
+}: {
+  gunHeld: boolean;
+  setGunHeld: (v: boolean) => void;
+  target: GunTarget;
+  firing: boolean;
+}) {
   return (
     <>
       <CameraInit />
-
-      {/* The void — barely visible ambient so silhouettes don't disappear */}
-      <ambientLight intensity={0.018} color="#100502" />
-
+      <ambientLight intensity={0.02} color="#100502" />
       <HangingSpot />
 
-      {/* Floor receives shadow but is nearly black — just the lit pool shows */}
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, -0.5, 0]}
-        receiveShadow
-      >
+      {/* Floor — nearly black, catches the shadow pool */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]} receiveShadow>
         <planeGeometry args={[12, 12]} />
         <meshStandardMaterial color="#050302" roughness={1} metalness={0} />
       </mesh>
 
-      {/* Table */}
-      <GLBModel
-        src={MODEL_TABLE}
-        position={[0, -0.5, 0]}
-        scale={0.6}
-        receiveShadow
+      <GLBModel src={MODEL_TABLE} position={[0, -0.5, 0]} scale={0.6} receiveShadow />
+
+      <InteractiveRevolver
+        held={gunHeld}
+        target={target}
+        firing={firing}
+        onPickup={() => setGunHeld(true)}
       />
 
-      {/* Revolver on the table */}
-      <GLBModel
-        src={MODEL_REVOLVER}
-        position={[0.05, 0.05, -0.05]}
-        rotation={[0, 0.6 + (isYourTurn ? 0 : Math.PI), 0]}
-        scale={0.18}
-      />
+      <GLBModel src={MODEL_LANTERN} position={[0, 2.05, 0]} scale={0.35} castShadow={false} />
 
-      {/* Lantern — hanging above where the spotlight emits */}
-      <GLBModel
-        src={MODEL_LANTERN}
-        position={[0, 2.05, 0]}
-        scale={0.35}
-        castShadow={false}
-      />
-
-      {/* Bullets scattered on the table */}
       <GLBModel src={MODEL_BULLET} position={[-0.32, 0.04, 0.18]} rotation={[Math.PI / 2, 0, 0.3]} scale={0.05} />
       <GLBModel src={MODEL_BULLET} position={[0.38, 0.04, 0.05]} rotation={[Math.PI / 2, 0, -0.7]} scale={0.05} />
       <GLBModel src={MODEL_BULLET} position={[-0.08, 0.04, 0.28]} rotation={[Math.PI / 2, 0, 1.4]} scale={0.05} />
@@ -191,34 +304,53 @@ function Scene({ isYourTurn }: { isYourTurn: boolean }) {
 }
 
 // ── Main canvas ───────────────────────────────────────────────────────────────
-export default function DuelArena3D({ isYourTurn }: { isYourTurn: boolean }) {
+export default function DuelArena3D({
+  isYourTurn,
+  gunHeld,
+  setGunHeld,
+  target,
+  firing,
+}: {
+  isYourTurn: boolean;
+  gunHeld: boolean;
+  setGunHeld: (v: boolean) => void;
+  target: GunTarget;
+  firing: boolean;
+}) {
+  // Reference isYourTurn so it's not "unused" — could drive scene mood later
+  void isYourTurn;
   return (
     <Canvas
       shadows="basic"
-      camera={{ position: [0.15, 1.05, 1.55], fov: 50 }}
+      camera={{ position: [0.05, 0.78, 1.15], fov: 48 }}
       gl={{
-        antialias: false, // Pixelation handles aliasing
+        antialias: false,
         alpha: false,
         toneMapping: THREE.ACESFilmicToneMapping,
-        toneMappingExposure: 0.7,
+        toneMappingExposure: 0.75,
       }}
-      style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none", background: "#000000", zIndex: 1 }}
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        // Allow click events on the gun mesh; UI panels above with their
+        // own backgrounds will capture clicks where they overlay.
+        pointerEvents: "auto",
+        background: "#000000",
+        zIndex: 1,
+      }}
     >
-      {/* Pure black background */}
       <color attach="background" args={["#000000"]} />
 
       <Suspense fallback={<LoadingText />}>
-        <Scene isYourTurn={isYourTurn} />
+        <Scene gunHeld={gunHeld} setGunHeld={setGunHeld} target={target} firing={firing} />
       </Suspense>
 
       <EffectComposer>
         <Pixelation granularity={3} />
-        <Bloom
-          intensity={0.9}
-          luminanceThreshold={0.5}
-          luminanceSmoothing={0.4}
-          mipmapBlur
-        />
+        <Bloom intensity={0.9} luminanceThreshold={0.5} luminanceSmoothing={0.4} mipmapBlur />
         <Noise opacity={0.045} />
         <Vignette eskil={false} offset={0.22} darkness={0.95} />
       </EffectComposer>
@@ -226,7 +358,6 @@ export default function DuelArena3D({ isYourTurn }: { isYourTurn: boolean }) {
   );
 }
 
-// Preload all GLBs so the Suspense fallback only flashes once
 useGLTF.preload(MODEL_TABLE);
 useGLTF.preload(MODEL_REVOLVER);
 useGLTF.preload(MODEL_LANTERN);
