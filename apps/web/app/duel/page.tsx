@@ -21,21 +21,8 @@ const HandRack3D = dynamic(() => import("@/components/HandRack3D"), { ssr: false
 type Chamber = "live" | "blank" | "empty";
 type Target = "self" | "opponent";
 
-const CARD_GLYPH: Record<RoletCard, string> = {
-  restoreBullet: "▲",
-  hawkEye: "◉",
-  silence: "✕",
-  blocker: "▣",
-  bulletExtractor: "↧",
-  shuffler: "↻",
-  doubleStrike: "✦",
-  healer: "+",
-  cardThief: "⌖",
-  randomInsight: "?",
-  lastChance: "!",
-  handOfFate: "✧",
-};
-
+// CARD_LABEL stays here — needed for the floating PLAY button label.
+// Glyph + blurb live in HandRack3D (where the card faces are drawn).
 const CARD_LABEL: Record<RoletCard, string> = {
   restoreBullet: "RestoreBullet",
   hawkEye: "HawkEye",
@@ -49,21 +36,6 @@ const CARD_LABEL: Record<RoletCard, string> = {
   randomInsight: "RandomInsight",
   lastChance: "LastChance",
   handOfFate: "HandOfFate",
-};
-
-const CARD_BLURB: Record<RoletCard, string> = {
-  restoreBullet: "Reload a spent chamber.",
-  hawkEye: "Reveal the next chamber.",
-  silence: "Mute the opponent's hand for one turn.",
-  blocker: "Negate the next bullet you take.",
-  bulletExtractor: "Eject the current chamber.",
-  shuffler: "Re-shuffle the loaded chambers.",
-  doubleStrike: "Your next live shot deals 2 HP.",
-  healer: "Restore 1 HP.",
-  cardThief: "Steal a random card.",
-  randomInsight: "Reveal a random unfired chamber.",
-  lastChance: "At 1 HP — skip opponent's next turn.",
-  handOfFate: "Re-roll the current chamber.",
 };
 
 // ============================================================
@@ -881,33 +853,6 @@ function OpponentHud({
   );
 }
 
-function PlayerVitals({
-  hp,
-  maxHp,
-  turnIsYours,
-}: {
-  hp: number;
-  maxHp: number;
-  turnIsYours: boolean;
-}) {
-  return (
-    <div className="col-span-3 border border-rust/60 bg-black/70 backdrop-blur-sm p-3">
-      <div className="flex items-center justify-between text-[9px] tracking-[0.4em] text-rust">
-        <span>// SUBJECT_01 (YOU)</span>
-        <span className={turnIsYours ? "text-red-500 animate-pulse" : "text-zinc-700"}>
-          {turnIsYours ? "TURN" : "WAIT"}
-        </span>
-      </div>
-      <div className="mt-3">
-        <HpBar hp={hp} maxHp={maxHp} accent="player" />
-      </div>
-      <div className="mt-2 text-[10px] tracking-[0.3em] text-zinc-500">
-        HP {hp}/{maxHp}
-      </div>
-    </div>
-  );
-}
-
 function HpBar({
   hp,
   maxHp,
@@ -967,163 +912,6 @@ function HpBar({
           style={{ boxShadow: `0 0 8px ${barColor}` }}
         />
       </div>
-    </div>
-  );
-}
-
-function HandRack({
-  hand,
-  selectedSlot,
-  onSelect,
-  onPlay,
-  disabled,
-}: {
-  hand: (RoletCard | null)[];
-  selectedSlot: number | null;
-  onSelect: (i: number | null) => void;
-  onPlay: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <div className="col-span-6 border border-rust/60 bg-black/70 backdrop-blur-sm p-3">
-      <div className="flex items-center justify-between text-[9px] tracking-[0.4em] text-rust mb-3">
-        <span>// HAND · 4 SLOTS</span>
-        {selectedSlot !== null && hand[selectedSlot] && (
-          <button
-            onClick={onPlay}
-            disabled={disabled}
-            className="border border-red-700 bg-red-950/40 px-3 py-1 text-[10px] tracking-[0.3em] text-red-300 hover:bg-red-900/60 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            ▶ PLAY {CARD_LABEL[hand[selectedSlot]!].toUpperCase()}
-          </button>
-        )}
-      </div>
-      <div className="grid grid-cols-4 gap-3">
-        {hand.map((card, i) => (
-          <CardSlot
-            key={i}
-            card={card}
-            selected={selectedSlot === i}
-            onClick={() =>
-              card && !disabled
-                ? onSelect(selectedSlot === i ? null : i)
-                : null
-            }
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CardSlot({
-  card,
-  selected,
-  onClick,
-}: {
-  card: RoletCard | null;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  if (!card) {
-    return (
-      <div
-        className="aspect-[3/4] border border-dashed border-rust/40 bg-black/40 flex items-center justify-center"
-        style={{ backgroundImage: "repeating-linear-gradient(45deg, rgba(70,40,18,0.05) 0 6px, transparent 6px 12px)" }}
-      >
-        <span className="text-[9px] tracking-[0.4em] text-rust/60">EMPTY</span>
-      </div>
-    );
-  }
-
-  return (
-    <motion.button
-      onClick={onClick}
-      animate={selected ? {
-        y: -10,
-        boxShadow: ["0 0 20px rgba(220,30,30,0.5)", "0 0 36px rgba(220,30,30,0.85)", "0 0 20px rgba(220,30,30,0.5)"],
-      } : { y: 0, boxShadow: "none" }}
-      whileHover={{ y: selected ? -12 : -4, transition: { duration: 0.15 } }}
-      transition={selected ? { boxShadow: { duration: 1.4, repeat: Infinity, ease: "easeInOut" }, y: { duration: 0.2 } } : { duration: 0.2 }}
-      className={`group relative aspect-[3/4] border bg-gradient-to-br from-[#1a0e08] via-[#0e0604] to-[#1a0e08] p-2 text-left ${
-        selected ? "border-red-600" : "border-rust/70 hover:border-red-800"
-      }`}
-    >
-      <div className="flex items-start justify-between">
-        <span className={`text-2xl ${selected ? "text-red-400" : "text-rust"}`}>
-          {CARD_GLYPH[card]}
-        </span>
-        <span className="text-[8px] tracking-[0.3em] text-rust/70">
-          {selected ? "ARMED" : "READY"}
-        </span>
-      </div>
-      <div className="mt-auto absolute bottom-2 left-2 right-2">
-        <div className={`text-[10px] tracking-[0.2em] uppercase ${selected ? "text-red-300" : "text-zinc-400"}`}>
-          {CARD_LABEL[card]}
-        </div>
-        <div className="mt-1 text-[8px] leading-tight text-zinc-600">
-          {CARD_BLURB[card]}
-        </div>
-      </div>
-      {selected && (
-        <div className="pointer-events-none absolute inset-0 border border-red-500/30" />
-      )}
-    </motion.button>
-  );
-}
-
-function ActionPanel({
-  target,
-  onTargetChange,
-  onPull,
-  disabled,
-}: {
-  target: Target;
-  onTargetChange: (t: Target) => void;
-  onPull: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <div className="col-span-3 border border-rust/60 bg-black/70 backdrop-blur-sm p-3 flex flex-col gap-3">
-      <div className="text-[9px] tracking-[0.4em] text-rust">// FIRING SOLUTION</div>
-
-      <div className="grid grid-cols-2 gap-2">
-        <TargetButton
-          label="OPPONENT"
-          active={target === "opponent"}
-          onClick={() => onTargetChange("opponent")}
-        />
-        <TargetButton
-          label="SELF"
-          active={target === "self"}
-          onClick={() => onTargetChange("self")}
-        />
-      </div>
-
-      <motion.button
-        onClick={onPull}
-        disabled={disabled}
-        animate={!disabled ? {
-          boxShadow: [
-            "0 0 12px rgba(220,30,30,0.4), inset 0 0 16px rgba(120,0,0,0.3)",
-            "0 0 36px rgba(255,30,30,0.85), inset 0 0 28px rgba(180,0,0,0.55)",
-            "0 0 12px rgba(220,30,30,0.4), inset 0 0 16px rgba(120,0,0,0.3)",
-          ],
-        } : { boxShadow: "none" }}
-        whileHover={!disabled ? { scale: 1.02, transition: { duration: 0.12 } } : {}}
-        whileTap={!disabled ? { scale: 0.97 } : {}}
-        transition={!disabled ? { boxShadow: { duration: 2.0, repeat: Infinity, ease: "easeInOut" } } : {}}
-        className={`relative mt-auto py-4 border-2 font-display tracking-[0.4em] text-lg transition-colors ${
-          disabled
-            ? "border-rust/40 text-rust/40 cursor-not-allowed"
-            : "border-red-600 bg-gradient-to-b from-red-950/60 to-black text-red-400 text-bleed hover:text-red-200"
-        }`}
-      >
-        ▼ PULL TRIGGER ▼
-        <div className="mt-1 text-[8px] tracking-[0.5em] text-rust">
-          target → {target.toUpperCase()}
-        </div>
-      </motion.button>
     </div>
   );
 }
