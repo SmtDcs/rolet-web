@@ -122,15 +122,15 @@ function HangingSpot() {
   );
 }
 
-// ── Camera — pulled back so the whole gun + table is in frame ───────────────
+// ── Camera — pulled back to see the whole table + gun ────────────────────────
 function CameraInit({ firing }: { firing: boolean }) {
   useFrame(({ camera, clock }, delta) => {
     const lerp = Math.min(1, delta * 3);
-    const sway = Math.sin(clock.elapsedTime * 0.4) * 0.008;
+    const sway = Math.sin(clock.elapsedTime * 0.4) * 0.006;
     camera.position.x += (0.0 + sway - camera.position.x) * lerp;
-    camera.position.y += (0.85 - camera.position.y) * lerp;
+    camera.position.y += (1.2 - camera.position.y) * lerp;
     camera.position.z += (1.8 - camera.position.z) * lerp;
-    camera.lookAt(0, 0.1, -0.3);
+    camera.lookAt(0, 0, 0);
 
     if ("fov" in camera) {
       const persp = camera as THREE.PerspectiveCamera;
@@ -160,10 +160,19 @@ function FPSGun({
   const muzzleFlash = useRef<THREE.PointLight>(null);
   const { scene } = useGLTF(MODEL_REVOLVER);
 
-  // Center the model geometry so (0,0,0) is the bounding-box center.
-  // Normal depth test / write — gun obeys depth like everything else.
+  // Center the geometry AND rotate it 90° on Y so the barrel aligns with
+  // the gun group's local -Z axis. After this, the outer group's rotation
+  // becomes intuitive: [0,0,0] → barrel forward (into scene), [0,π,0] →
+  // barrel toward camera.
   const model = useMemo(() => {
     const cloned = scene.clone(true);
+
+    // 1) Rotate the model so the barrel ends up along the group's -Z axis.
+    //    Quaternius revolver's barrel is along its local +X by default.
+    //    +π/2 Y rotation maps +X → -Z (forward, into the scene).
+    cloned.rotation.y = Math.PI / 2;
+
+    // 2) Compute bbox AFTER the rotation, recenter to parent origin.
     const box = new THREE.Box3().setFromObject(cloned);
     const center = box.getCenter(new THREE.Vector3());
     cloned.position.sub(center);
@@ -177,14 +186,15 @@ function FPSGun({
     return cloned;
   }, [scene]);
 
-  // Rotation targets — clean Euler values now that the geometry is centered.
-  // Opponent: barrel forward (-Z world). Self: barrel back toward camera (+Z).
-  const BASE_EUL_OPP = useMemo(() => new THREE.Euler(0, Math.PI, 0), []);
-  const BASE_EUL_SELF = useMemo(() => new THREE.Euler(0, 0, 0), []);
+  // After the inner rotation, barrel direction in OUTER local space is -Z.
+  // Opponent: outer rotation [0, 0, 0] — barrel world -Z, away from camera.
+  // Self:     outer rotation [0, π, 0] — barrel world +Z, toward camera.
+  const BASE_EUL_OPP = useMemo(() => new THREE.Euler(0, 0, 0), []);
+  const BASE_EUL_SELF = useMemo(() => new THREE.Euler(0, Math.PI, 0), []);
 
-  // Position targets — centered above table, raised so it doesn't clip in.
-  const BASE_POS_OPP = useMemo(() => new THREE.Vector3(0, 0.25, 0.5), []);
-  const BASE_POS_SELF = useMemo(() => new THREE.Vector3(0.05, 0.3, 0.55), []);
+  // Position targets — close to center, raised so it doesn't clip the table.
+  const BASE_POS_OPP = useMemo(() => new THREE.Vector3(0.15, 0.4, 0.6), []);
+  const BASE_POS_SELF = useMemo(() => new THREE.Vector3(0.15, 0.4, 0.6), []);
 
   const fireStartedAt = useRef<number | null>(null);
   const fireKindAtStart = useRef<FireKind>(null);
@@ -248,16 +258,18 @@ function FPSGun({
   return (
     <group
       ref={group}
-      position={[0, 0.25, 0.5]}
-      rotation={[0, Math.PI, 0]}
+      position={[0.15, 0.4, 0.6]}
+      rotation={[0, 0, 0]}
       scale={[0.5, 0.5, 0.5]}
       onClick={handleClick}
       onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
       onPointerOut={() => { document.body.style.cursor = "default"; }}
     >
       <primitive object={model} />
+      {/* Local fill light — keeps gun lit against the dark void */}
       <pointLight position={[0.3, 0.5, 0.3]} color="#ffd9a0" intensity={5} distance={3} decay={2} />
-      <pointLight ref={muzzleFlash} position={[0, 0.2, -0.7]} color="#ffaa22" intensity={0} distance={5} decay={2} />
+      {/* Muzzle flash — placed at barrel tip (outer local -Z, the barrel direction) */}
+      <pointLight ref={muzzleFlash} position={[0, 0.1, -0.65]} color="#ffaa22" intensity={0} distance={6} decay={2} />
     </group>
   );
 }
@@ -277,7 +289,10 @@ function Scene({
   return (
     <>
       <CameraInit firing={firing === "live"} />
-      <ambientLight intensity={0.02} color="#100502" />
+      {/* A touch more ambient so table details + bullets read clearly */}
+      <ambientLight intensity={0.08} color="#2a1408" />
+      {/* Soft fill over the table so bullets aren't lost in shadow */}
+      <pointLight position={[0, 1.2, 0.4]} color="#ffba70" intensity={3} distance={2.5} decay={2} />
       <HangingSpot />
 
       {/* Floor — nearly black, catches the shadow pool */}
@@ -298,10 +313,11 @@ function Scene({
 
       <GLBModel src={MODEL_LANTERN} position={[0, 2.05, 0]} scale={0.35} castShadow={false} />
 
-      <GLBModel src={MODEL_BULLET} position={[-0.32, 0.04, 0.18]} rotation={[Math.PI / 2, 0, 0.3]} scale={0.05} />
-      <GLBModel src={MODEL_BULLET} position={[0.38, 0.04, 0.05]} rotation={[Math.PI / 2, 0, -0.7]} scale={0.05} />
-      <GLBModel src={MODEL_BULLET} position={[-0.08, 0.04, 0.28]} rotation={[Math.PI / 2, 0, 1.4]} scale={0.05} />
-      <GLBModel src={MODEL_BULLET} position={[0.22, 0.04, 0.22]} rotation={[Math.PI / 2, 0, -0.2]} scale={0.05} />
+      {/* Bullets scattered on the table — larger so they read at distance */}
+      <GLBModel src={MODEL_BULLET} position={[-0.45, 0.08, 0.2]} rotation={[Math.PI / 2, 0, 0.3]} scale={0.1} />
+      <GLBModel src={MODEL_BULLET} position={[0.55, 0.08, 0.1]} rotation={[Math.PI / 2, 0, -0.7]} scale={0.1} />
+      <GLBModel src={MODEL_BULLET} position={[-0.18, 0.08, 0.4]} rotation={[Math.PI / 2, 0, 1.4]} scale={0.1} />
+      <GLBModel src={MODEL_BULLET} position={[0.35, 0.08, 0.35]} rotation={[Math.PI / 2, 0, -0.2]} scale={0.1} />
     </>
   );
 }
@@ -325,7 +341,7 @@ export default function DuelArena3D({
   return (
     <Canvas
       shadows="basic"
-      camera={{ position: [0.0, 0.85, 1.8], fov: 55 }}
+      camera={{ position: [0.0, 1.2, 1.8], fov: 55 }}
       gl={{
         antialias: false,
         alpha: false,
