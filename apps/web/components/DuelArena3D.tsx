@@ -80,11 +80,11 @@ function GLBModel({
   return <primitive object={model} position={position} rotation={rotation} scale={scale} />;
 }
 
-// ── Flickering spotlight that hangs above the table ───────────────────────────
+// ── Flickering spotlight (wider cone so the table edges aren't pitch black) ──
 function HangingSpot() {
   const light = useRef<THREE.SpotLight>(null);
   const target = useRef<THREE.Object3D>(new THREE.Object3D());
-  const baseIntensity = 45;
+  const baseIntensity = 55;
 
   useFrame(({ clock }) => {
     if (!light.current) return;
@@ -104,13 +104,13 @@ function HangingSpot() {
       <primitive object={target.current} position={[0, 0, 0]} />
       <spotLight
         ref={light}
-        position={[0, 2.4, 0]}
+        position={[0, 1.4, 0]}
         target={target.current}
-        angle={0.55}
-        penumbra={0.18}
+        angle={0.85}
+        penumbra={0.35}
         intensity={baseIntensity}
         distance={6}
-        decay={1.6}
+        decay={1.4}
         color="#ffb86b"
         castShadow
         shadow-mapSize-width={1024}
@@ -122,14 +122,52 @@ function HangingSpot() {
   );
 }
 
-// ── Camera — pulled back to see the whole table + gun ────────────────────────
+// ── Swinging lantern — hangs above the table, gentle pendulum motion ─────────
+function SwingingLantern() {
+  const ref = useRef<THREE.Group>(null);
+  const { scene } = useGLTF(MODEL_LANTERN);
+  const model = useMemo(() => {
+    const cloned = scene.clone(true);
+    cloned.traverse((obj) => {
+      if ((obj as THREE.Mesh).isMesh) {
+        (obj as THREE.Mesh).castShadow = false;
+      }
+    });
+    return cloned;
+  }, [scene]);
+
+  useFrame(({ clock }) => {
+    if (!ref.current) return;
+    const t = clock.elapsedTime;
+    // Pivot at the top of the lantern → swings like a pendulum
+    ref.current.rotation.z = Math.sin(t * 0.7) * 0.09;
+    ref.current.rotation.x = Math.cos(t * 0.5) * 0.04;
+  });
+
+  return (
+    // Pivot point is where the cord attaches; lantern body hangs BELOW (-Y)
+    <group ref={ref} position={[0, 1.5, 0]}>
+      {/* Cord going up off-screen */}
+      <mesh position={[0, 0.4, 0]}>
+        <cylinderGeometry args={[0.008, 0.008, 0.8, 6]} />
+        <meshStandardMaterial color="#0a0604" roughness={1} />
+      </mesh>
+      {/* Lantern body — offset down from pivot so it swings naturally */}
+      <group position={[0, -0.3, 0]}>
+        <primitive object={model} scale={0.4} />
+      </group>
+    </group>
+  );
+}
+
+// ── Camera — pulled in a bit closer to see table details + bullets ──────────
 function CameraInit({ firing }: { firing: boolean }) {
   useFrame(({ camera, clock }, delta) => {
     const lerp = Math.min(1, delta * 3);
     const sway = Math.sin(clock.elapsedTime * 0.4) * 0.006;
     camera.position.x += (0.0 + sway - camera.position.x) * lerp;
     camera.position.y += (1.2 - camera.position.y) * lerp;
-    camera.position.z += (1.8 - camera.position.z) * lerp;
+    camera.position.z += (1.5 - camera.position.z) * lerp;
     camera.lookAt(0, 0, 0);
 
     if ("fov" in camera) {
@@ -192,9 +230,9 @@ function FPSGun({
   const BASE_EUL_OPP = useMemo(() => new THREE.Euler(0, 0, 0), []);
   const BASE_EUL_SELF = useMemo(() => new THREE.Euler(0, Math.PI, 0), []);
 
-  // Position targets — close to center, raised so it doesn't clip the table.
-  const BASE_POS_OPP = useMemo(() => new THREE.Vector3(0.15, 0.4, 0.6), []);
-  const BASE_POS_SELF = useMemo(() => new THREE.Vector3(0.15, 0.4, 0.6), []);
+  // Position targets — sitting on the table top (lower y after the scale cut).
+  const BASE_POS_OPP = useMemo(() => new THREE.Vector3(0.15, 0.15, 0.6), []);
+  const BASE_POS_SELF = useMemo(() => new THREE.Vector3(0.15, 0.15, 0.6), []);
 
   const fireStartedAt = useRef<number | null>(null);
   const fireKindAtStart = useRef<FireKind>(null);
@@ -258,17 +296,17 @@ function FPSGun({
   return (
     <group
       ref={group}
-      position={[0.15, 0.4, 0.6]}
+      position={[0.15, 0.15, 0.6]}
       rotation={[0, 0, 0]}
-      scale={[0.5, 0.5, 0.5]}
+      scale={[0.25, 0.25, 0.25]}
       onClick={handleClick}
       onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
       onPointerOut={() => { document.body.style.cursor = "default"; }}
     >
       <primitive object={model} />
       {/* Local fill light — keeps gun lit against the dark void */}
-      <pointLight position={[0.3, 0.5, 0.3]} color="#ffd9a0" intensity={5} distance={3} decay={2} />
-      {/* Muzzle flash — placed at barrel tip (outer local -Z, the barrel direction) */}
+      <pointLight position={[0.3, 0.5, 0.3]} color="#ffd9a0" intensity={4} distance={2} decay={2} />
+      {/* Muzzle flash — placed at barrel tip (outer local -Z = barrel direction) */}
       <pointLight ref={muzzleFlash} position={[0, 0.1, -0.65]} color="#ffaa22" intensity={0} distance={6} decay={2} />
     </group>
   );
@@ -301,9 +339,8 @@ function Scene({
         <meshStandardMaterial color="#050302" roughness={1} metalness={0} />
       </mesh>
 
-      <GLBModel src={MODEL_TABLE} position={[0, -0.5, 0]} scale={0.6} receiveShadow />
+      <GLBModel src={MODEL_TABLE} position={[0, -0.5, 0]} scale={0.78} receiveShadow />
 
-      {/* FPS gun — portaled into camera, NOT a child of the scene root */}
       <FPSGun
         held={gunHeld}
         target={target}
@@ -311,7 +348,8 @@ function Scene({
         onPickup={() => setGunHeld(true)}
       />
 
-      <GLBModel src={MODEL_LANTERN} position={[0, 2.05, 0]} scale={0.35} castShadow={false} />
+      {/* Hanging lantern — swings gently, visible above the table */}
+      <SwingingLantern />
 
       {/* Bullets scattered on the table — larger so they read at distance */}
       <GLBModel src={MODEL_BULLET} position={[-0.45, 0.08, 0.2]} rotation={[Math.PI / 2, 0, 0.3]} scale={0.1} />
@@ -341,7 +379,7 @@ export default function DuelArena3D({
   return (
     <Canvas
       shadows="basic"
-      camera={{ position: [0.0, 1.2, 1.8], fov: 55 }}
+      camera={{ position: [0.0, 1.2, 1.5], fov: 55 }}
       gl={{
         antialias: false,
         alpha: false,
