@@ -475,23 +475,23 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
    * 8 (disc) + 8 (match_id) + 32 (host) + 32 (host_commit) = 80 bytes.
    * If byte 80 is 0, the option is None.
    */
-  const findOpenLobby = useCallback(async (excludeHost?: PublicKey) => {
+  const findOpenLobby = useCallback(async (excludeHost?: PublicKey): Promise<{ matchId: BN; host: PublicKey } | null> => {
     if (!programL1) return null;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const lobbies = await (programL1.account as any).lobbyState.all([
-        {
-          memcmp: {
-            offset: 80,
-            bytes: bs58.encode(Uint8Array.from([0])),
-          },
-        },
+        { memcmp: { offset: 80, bytes: bs58.encode(Uint8Array.from([0])) } },
       ]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const filtered = excludeHost
-        ? lobbies.filter((l: any) => !l.account.host.equals(excludeHost)) // eslint-disable-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ? lobbies.filter((l: any) => !l.account.host.equals(excludeHost))
         : lobbies;
       if (filtered.length > 0) {
-        return filtered[0].account.matchId as BN;
+        return {
+          matchId: filtered[0].account.matchId as BN,
+          host: filtered[0].account.host as PublicKey,
+        };
       }
       return null;
     } catch (err) {

@@ -1199,9 +1199,9 @@ function Lobby() {
     setBusy(true);
     try {
       // Scan for an existing open lobby (exclude own lobbies to prevent self-match)
-      const openMatchId = await rolet.findOpenLobby(wallet.publicKey);
-      if (openMatchId) {
-        router.replace(`/duel?join=${openMatchId.toString(16)}&auto=true`);
+      const openLobby = await rolet.findOpenLobby(wallet.publicKey);
+      if (openLobby) {
+        router.replace(`/duel?join=${openLobby.matchId.toString(16)}&auto=true`);
         return;
       }
 
@@ -1312,25 +1312,27 @@ function HostWaiting({ matchId }: { matchId: BN }) {
       } catch { /* swallow */ }
     }, 2000);
 
+    let crossCheckInterval: ReturnType<typeof setInterval> | null = null;
+
     // Delay cross-check by 6s so normal joins have time to complete first
     const crossCheckTimer = setTimeout(() => {
-      const crossCheck = setInterval(async () => {
+      crossCheckInterval = setInterval(async () => {
         if (!alive) return;
         try {
           const myLobby = await rolet.fetchLobby(matchId);
           if (myLobby?.guest) return; // Guest arrived — stay as host
 
-          const otherId = await rolet.findOpenLobby(wallet.publicKey!);
-          if (!alive || !otherId) return;
+          const other = await rolet.findOpenLobby(wallet.publicKey!);
+          if (!alive || !other) return;
 
-          // Only the player with the LARGER matchId crosses over — deterministic
-          if (matchId.gt(otherId)) {
-            router.replace(`/duel?join=${otherId.toString(16)}&auto=true`);
+          // Deterministic tiebreaker: compare wallet pubkeys as strings.
+          // The player whose pubkey is GREATER becomes the guest and joins.
+          // This guarantees exactly one side crosses over.
+          if (wallet.publicKey!.toBase58() > other.host.toBase58()) {
+            router.replace(`/duel?join=${other.matchId.toString(16)}&auto=true`);
           }
         } catch { /* swallow */ }
       }, 5000);
-      if (!alive) clearInterval(crossCheck);
-      return crossCheck;
     }, 6000);
 
     rolet.fetchLobby(matchId).then((l) => { if (alive) setLobby(l); });
@@ -1338,6 +1340,7 @@ function HostWaiting({ matchId }: { matchId: BN }) {
       alive = false;
       clearInterval(poll);
       clearTimeout(crossCheckTimer);
+      if (crossCheckInterval) clearInterval(crossCheckInterval);
     };
   }, [rolet, matchId, wallet.publicKey, router]);
 
