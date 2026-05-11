@@ -2,6 +2,7 @@
 "use client";
 
 import { Canvas, useFrame } from "@react-three/fiber";
+import { useGLTF } from "@react-three/drei";
 import {
   EffectComposer,
   Bloom,
@@ -24,117 +25,46 @@ function CameraRig({ isYourTurn }: { isYourTurn: boolean }) {
   return null;
 }
 
-// ── Procedural revolver ───────────────────────────────────────────────────────
+// ── GLTF revolver ─────────────────────────────────────────────────────────────
 function Revolver({ spinning }: { spinning: boolean }) {
   const group = useRef<THREE.Group>(null);
-  const drum = useRef<THREE.Mesh>(null);
+  const { scene } = useGLTF("/revolver_hd.glb");
+
+  // Clone scene so multiple instances don't share state
+  const model = useMemo(() => {
+    const cloned = scene.clone(true);
+    // Darken + metalify all materials for the dim room lighting
+    cloned.traverse((obj) => {
+      if ((obj as THREE.Mesh).isMesh) {
+        const mesh = obj as THREE.Mesh;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        mats.forEach((mat) => {
+          if (mat instanceof THREE.MeshStandardMaterial) {
+            mat.roughness = Math.max(mat.roughness, 0.35);
+            mat.metalness = Math.min(mat.metalness + 0.2, 1.0);
+            mat.envMapIntensity = 0.6;
+          }
+        });
+        mesh.castShadow = true;
+      }
+    });
+    return cloned;
+  }, [scene]);
 
   useFrame(({ clock }) => {
     if (!group.current) return;
-    group.current.position.y = 0.06 + Math.sin(clock.elapsedTime * 0.7) * 0.005;
-    if (drum.current && spinning) {
-      drum.current.rotation.x += 0.04;
-    }
+    group.current.position.y = 0.08 + Math.sin(clock.elapsedTime * 0.7) * 0.006;
+    if (spinning) group.current.rotation.y += 0.008;
   });
 
-  const metal = {
-    color: "#282828",
-    roughness: 0.18,
-    metalness: 0.92,
-    envMapIntensity: 1.2,
-  };
-  const darkMetal = { color: "#181818", roughness: 0.25, metalness: 0.88 };
-  const wood = { color: "#3c1a08", roughness: 0.88, metalness: 0.0 };
-
   return (
-    <group ref={group} position={[0.06, 0.06, -0.1]} rotation={[0, 0.55, 0]}>
-      {/* Main frame */}
-      <mesh>
-        <boxGeometry args={[0.072, 0.155, 0.3]} />
-        <meshStandardMaterial {...metal} />
-      </mesh>
-
-      {/* Barrel */}
-      <mesh position={[0, 0.038, -0.31]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.017, 0.017, 0.4, 12]} />
-        <meshStandardMaterial {...metal} />
-      </mesh>
-      {/* Barrel rib (top) */}
-      <mesh position={[0, 0.058, -0.31]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.006, 0.006, 0.4, 6]} />
-        <meshStandardMaterial {...darkMetal} />
-      </mesh>
-      {/* Muzzle end */}
-      <mesh position={[0, 0.038, -0.515]}>
-        <cylinderGeometry args={[0.014, 0.017, 0.016, 12]} />
-        <meshStandardMaterial {...darkMetal} />
-      </mesh>
-      {/* Muzzle glow dot (subtle) */}
-      <mesh position={[0, 0.038, -0.525]} rotation={[Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[0.013, 12]} />
-        <meshStandardMaterial
-          color="#ff3300"
-          emissive="#ff2200"
-          emissiveIntensity={0.7}
-        />
-      </mesh>
-
-      {/* Cylinder/Drum */}
-      <mesh ref={drum} position={[0, 0.038, 0.04]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.062, 0.062, 0.06, 6, 1]} />
-        <meshStandardMaterial {...metal} />
-      </mesh>
-      {/* 6 chambers */}
-      {Array.from({ length: 6 }).map((_, i) => {
-        const a = (i / 6) * Math.PI * 2;
-        return (
-          <mesh
-            key={i}
-            position={[
-              Math.sin(a) * 0.033,
-              0.038 + Math.cos(a) * 0.033,
-              0.04,
-            ]}
-            rotation={[Math.PI / 2, 0, 0]}
-          >
-            <cylinderGeometry args={[0.011, 0.011, 0.065, 8]} />
-            <meshStandardMaterial color="#080808" roughness={1} metalness={0} />
-          </mesh>
-        );
-      })}
-
-      {/* Hammer */}
-      <mesh position={[0, 0.094, 0.13]}>
-        <boxGeometry args={[0.024, 0.055, 0.038]} />
-        <meshStandardMaterial {...darkMetal} />
-      </mesh>
-
-      {/* Trigger guard */}
-      <mesh position={[0, -0.082, -0.04]} rotation={[0.5, 0, 0]}>
-        <torusGeometry args={[0.038, 0.007, 6, 16, Math.PI * 0.72]} />
-        <meshStandardMaterial {...metal} />
-      </mesh>
-      {/* Trigger */}
-      <mesh position={[0, -0.075, -0.025]} rotation={[0.85, 0, 0]}>
-        <boxGeometry args={[0.009, 0.036, 0.007]} />
-        <meshStandardMaterial {...metal} />
-      </mesh>
-
-      {/* Grip */}
-      <mesh position={[0, -0.178, 0.09]} rotation={[0.38, 0, 0]}>
-        <boxGeometry args={[0.06, 0.19, 0.09]} />
-        <meshStandardMaterial {...wood} />
-      </mesh>
-      {/* Grip side panels */}
-      {[-0.032, 0.032].map((x, i) => (
-        <mesh key={i} position={[x, -0.178, 0.09]} rotation={[0.38, 0, 0]}>
-          <boxGeometry args={[0.003, 0.185, 0.086]} />
-          <meshStandardMaterial color={i === 0 ? "#2d1006" : "#2d1006"} roughness={0.95} />
-        </mesh>
-      ))}
+    <group ref={group} position={[0.05, 0.08, -0.05]} rotation={[0.1, 0.6, -0.05]} scale={0.22}>
+      <primitive object={model} />
     </group>
   );
 }
+// Preload so it's ready before the scene mounts
+useGLTF.preload("/revolver_hd.glb");
 
 // ── Hanging lamp ──────────────────────────────────────────────────────────────
 function HangingLamp() {
