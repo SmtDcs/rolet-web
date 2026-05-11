@@ -1416,11 +1416,11 @@ function GuestLobby({ matchId, autoJoin = false }: { matchId: BN, autoJoin?: boo
   }, [wallet.publicKey, rolet, matchId]);
 
   useEffect(() => {
-    if (autoJoin && wallet.publicKey && !joined && !busy && !autoTriggered) {
+    if (autoJoin && wallet.publicKey && rolet.program && !joined && !busy && !autoTriggered) {
       setAutoTriggered(true);
       handleJoin();
     }
-  }, [autoJoin, wallet.publicKey, joined, busy, autoTriggered, handleJoin]);
+  }, [autoJoin, wallet.publicKey, rolet.program, joined, busy, autoTriggered, handleJoin]);
 
   // After joining, poll for MatchState to appear (host calls init_match)
   useEffect(() => {
