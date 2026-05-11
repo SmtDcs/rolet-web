@@ -832,18 +832,17 @@ function CCTVViewport({
           </div>
         </div>
 
-        {/* Chamber indicator row — overlay at top-center of viewport */}
+        {/* Chamber indicator row — positions only, no live/blank revealed */}
         <div className="absolute top-9 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 drop-shadow-[0_0_4px_rgba(0,0,0,0.95)]">
           <div className="flex items-center gap-3 text-[10px] tracking-[0.35em] font-bold">
             <span className="text-amber-200/90">8 CHAMBERS</span>
             <span className="text-rust">·</span>
-            <span className="text-red-400 text-bleed">{liveCount} LIVE</span>
-            <span className="text-rust">·</span>
-            <span className="text-zinc-200/80">{blankCount} BLANK</span>
+            <span className="text-zinc-300/80">{liveCount + blankCount} LOADED</span>
           </div>
           <div className="flex gap-1.5 items-center">
             {chambers.map((c, i) => {
               const isCurrent = i === currentChamber;
+              const loaded = c !== "empty";
               return (
                 <motion.div
                   key={i}
@@ -853,11 +852,9 @@ function CCTVViewport({
                   } : { scaleY: 1, boxShadow: "none" }}
                   transition={isCurrent ? { duration: 1.2, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}
                   className={`h-3 w-6 border ${
-                    c === "empty"
-                      ? "bg-transparent border-rust/30"
-                      : c === "live"
-                      ? "bg-red-900/70 border-red-700"
-                      : "bg-zinc-700/50 border-zinc-600"
+                    loaded
+                      ? "bg-zinc-600/60 border-zinc-500/80"
+                      : "bg-transparent border-rust/20"
                   } ${isCurrent ? "-translate-y-0.5" : ""}`}
                 />
               );
@@ -880,6 +877,60 @@ function CCTVViewport({
   );
 }
 
+function OpponentEyes() {
+  return (
+    <div
+      className="pointer-events-none flex items-center gap-8 animate-float"
+      style={{ filter: "drop-shadow(0 0 10px rgba(180,0,0,0.8))" }}
+    >
+      {[0, 1].map((i) => (
+        <div
+          key={i}
+          style={{
+            position: "relative",
+            width: 64,
+            height: 40,
+            borderRadius: "50%",
+            overflow: "hidden",
+            background: "#0d0303",
+            border: "1.5px solid #5a1212",
+            boxShadow:
+              "0 0 18px rgba(200,10,10,0.75), inset 0 0 10px rgba(0,0,0,0.9)",
+          }}
+        >
+          <div style={{
+            position: "absolute", top: "50%", left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 26, height: 26, borderRadius: "50%",
+            background: "radial-gradient(circle at 40% 38%, #4a0000, #0a0000 75%)",
+            border: "1.5px solid #cc1111",
+            animation: "rolet-eye-glow 3s ease-in-out infinite",
+            animationDelay: `${i * 0.4}s`,
+          }} />
+          <div style={{
+            position: "absolute", top: "50%", left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 11, height: 11, borderRadius: "50%", background: "#000",
+          }} />
+          <div style={{
+            position: "absolute", top: "28%", left: "35%",
+            width: 5, height: 3, borderRadius: "50%",
+            background: "rgba(255,60,60,0.5)",
+          }} />
+          <div style={{
+            position: "absolute", inset: 0,
+            background: "#0a0807",
+            transformOrigin: "top center",
+            transform: "scaleY(0)",
+            animation: "rolet-blink-lid 6s ease-in-out infinite",
+            animationDelay: `${i * 0.2 + 0.1}s`,
+          }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function OpponentHud({
   hp,
   maxHp,
@@ -890,11 +941,14 @@ function OpponentHud({
   status: string;
 }) {
   return (
-    <div className="mt-3 flex items-center gap-4 border border-rust/60 bg-black/70 backdrop-blur-sm px-4 py-2">
-      <div className="text-[10px] tracking-[0.4em] text-zinc-500">OPPONENT</div>
-      <HpBar hp={hp} maxHp={maxHp} accent="opponent" />
-      <div className="text-[10px] tracking-[0.4em] text-rust">
-        STATUS · {status.toUpperCase()}
+    <div className="flex flex-col items-center gap-2 mt-2">
+      <OpponentEyes />
+      <div className="flex items-center gap-4 border border-rust/60 bg-black/70 backdrop-blur-sm px-4 py-2">
+        <div className="text-[10px] tracking-[0.4em] text-zinc-500">OPPONENT</div>
+        <HpBar hp={hp} maxHp={maxHp} accent="opponent" />
+        <div className="text-[10px] tracking-[0.4em] text-rust">
+          STATUS · {status.toUpperCase()}
+        </div>
       </div>
     </div>
   );

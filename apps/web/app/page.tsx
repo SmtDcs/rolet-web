@@ -125,10 +125,6 @@ function Hero() {
           // ON-CHAIN RUSSIAN ROULETTE · PROVABLY FAIR · SOLANA
         </p>
 
-        <div className="mt-10">
-          <GhostEyes />
-        </div>
-
         <div className="mt-8 flex items-center gap-3 text-[10px] tracking-[0.4em] text-rust">
           <span className="h-px w-12 bg-rust" />
           EIGHT CHAMBERS · THREE BLANKS · ONE WALKS OUT
