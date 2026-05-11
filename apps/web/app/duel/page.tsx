@@ -13,6 +13,7 @@ import { keccak_256 } from "@noble/hashes/sha3.js";
 import { useRolet, useToasts, type RoletCard } from "@/hooks/useRolet";
 
 const DuelArena3D = dynamic(() => import("@/components/DuelArena3D"), { ssr: false });
+const HandRack3D = dynamic(() => import("@/components/HandRack3D"), { ssr: false });
 
 // ============================================================
 // Domain types
@@ -635,50 +636,81 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
             </div>
           )}
 
-          <div className="grid grid-cols-12 gap-4">
-            <PlayerVitals hp={playerHp} maxHp={4} turnIsYours={turnIsYours} />
-            <HandRack
-              hand={decoded?.yourHand ?? [null, null, null, null]}
-              selectedSlot={selectedSlot}
-              onSelect={setSelectedSlot}
-              onPlay={handlePlayCard}
-              disabled={!turnIsYours || !!decoded?.silencedYou || rolet.busy}
-            />
-            <ActionPanel
-              target={target}
-              onTargetChange={setTarget}
-              onPull={handlePullTrigger}
-              disabled={!turnIsYours || rolet.busy}
-            />
-          </div>
-
-          {/* Cursed terminal log — sourced from real toasts + ER deltas */}
-          <div className="border border-rust/50 bg-black/70 backdrop-blur-sm px-4 py-3 max-h-32 overflow-hidden">
-            <div className="flex items-center justify-between">
-              <div className="text-[9px] tracking-[0.4em] text-rust">// LOG</div>
-              <div className="text-[9px] tracking-[0.4em] text-zinc-700">
-                {rolet.sessionKey
-                  ? `SK ${rolet.sessionKey.toBase58().slice(0, 6)}…`
-                  : "NO SESSION"}
+          <div className="grid grid-cols-12 gap-3 items-end">
+            {/* Slim player vitals */}
+            <div className="col-span-2 border border-rust/60 bg-black/70 backdrop-blur-sm p-2">
+              <div className="flex items-center justify-between text-[8px] tracking-[0.35em] text-rust">
+                <span>// YOU</span>
+                <span className={turnIsYours ? "text-red-400 animate-pulse" : "text-zinc-600"}>
+                  {turnIsYours ? "TURN" : "WAIT"}
+                </span>
+              </div>
+              <div className="mt-2">
+                <HpBar hp={playerHp} maxHp={4} accent="player" />
+              </div>
+              <div className="mt-1 text-center text-[9px] tracking-[0.3em] text-zinc-500">
+                HP {playerHp}/4
               </div>
             </div>
-            <div className="font-mono text-[11px] leading-snug text-zinc-500 space-y-0.5 mt-1">
-              {log.slice(0, 5).map((line, i) => (
-                <div
-                  key={`${i}-${line}`}
-                  className={
-                    i === 0
-                      ? line.startsWith("!!")
-                        ? "text-red-500"
-                        : line.startsWith(">>")
-                        ? "text-red-300"
-                        : "text-zinc-300"
-                      : ""
-                  }
+
+            {/* 3D card hand */}
+            <div className="col-span-7 relative h-32">
+              <HandRack3D
+                hand={decoded?.yourHand ?? [null, null, null, null]}
+                selectedSlot={selectedSlot}
+                onSelect={setSelectedSlot}
+                disabled={!turnIsYours || !!decoded?.silencedYou || rolet.busy}
+              />
+              {/* Floating PLAY button — appears when a card is selected */}
+              {selectedSlot !== null && decoded?.yourHand[selectedSlot] && (
+                <button
+                  onClick={handlePlayCard}
+                  disabled={rolet.busy}
+                  className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 border border-red-500 bg-black/85 backdrop-blur-sm px-4 py-1.5 text-[10px] tracking-[0.4em] text-red-300 font-bold shadow-[0_0_18px_rgba(220,30,30,0.6)] hover:bg-red-950/60 disabled:opacity-40"
                 >
-                  {line}
-                </div>
-              ))}
+                  ▶ PLAY {CARD_LABEL[decoded.yourHand[selectedSlot]!].toUpperCase()}
+                </button>
+              )}
+            </div>
+
+            {/* Slim action panel */}
+            <div className="col-span-3 border border-rust/60 bg-black/70 backdrop-blur-sm p-2 flex flex-col gap-2">
+              <div className="text-[8px] tracking-[0.4em] text-rust">// FIRING SOLUTION</div>
+              <div className="grid grid-cols-2 gap-1">
+                <TargetButton label="OPP" active={target === "opponent"} onClick={() => setTarget("opponent")} />
+                <TargetButton label="SELF" active={target === "self"} onClick={() => setTarget("self")} />
+              </div>
+              <motion.button
+                onClick={handlePullTrigger}
+                disabled={!turnIsYours || rolet.busy}
+                animate={turnIsYours && !rolet.busy ? {
+                  boxShadow: [
+                    "0 0 10px rgba(220,30,30,0.4), inset 0 0 12px rgba(120,0,0,0.3)",
+                    "0 0 28px rgba(255,30,30,0.85), inset 0 0 22px rgba(180,0,0,0.55)",
+                    "0 0 10px rgba(220,30,30,0.4), inset 0 0 12px rgba(120,0,0,0.3)",
+                  ],
+                } : { boxShadow: "none" }}
+                whileHover={turnIsYours && !rolet.busy ? { scale: 1.03 } : {}}
+                whileTap={turnIsYours && !rolet.busy ? { scale: 0.97 } : {}}
+                transition={turnIsYours && !rolet.busy ? { boxShadow: { duration: 2.0, repeat: Infinity, ease: "easeInOut" } } : {}}
+                className={`py-2.5 border-2 font-display tracking-[0.3em] text-sm transition-colors ${
+                  !turnIsYours || rolet.busy
+                    ? "border-rust/40 text-rust/40 cursor-not-allowed"
+                    : "border-red-600 bg-gradient-to-b from-red-950/60 to-black text-red-400 text-bleed hover:text-red-200"
+                }`}
+              >
+                ▼ PULL TRIGGER
+              </motion.button>
+            </div>
+          </div>
+
+          {/* Compact 1-line log */}
+          <div className="border border-rust/50 bg-black/70 backdrop-blur-sm px-3 py-1.5 flex items-center justify-between">
+            <div className="font-mono text-[10px] leading-none tracking-wide text-zinc-300 truncate">
+              {log[0]}
+            </div>
+            <div className="text-[9px] tracking-[0.4em] text-zinc-600 shrink-0 ml-2">
+              {rolet.sessionKey ? `SK ${rolet.sessionKey.toBase58().slice(0, 6)}…` : "NO SK"}
             </div>
           </div>
 
