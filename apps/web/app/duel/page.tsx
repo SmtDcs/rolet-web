@@ -1312,6 +1312,9 @@ function HostWaiting({ matchId }: { matchId: BN }) {
     const crossCheck = setInterval(async () => {
       if (!alive) return;
       try {
+        // If our own lobby already has a guest, stay as host — don't cross-join
+        const myLobby = await rolet.fetchLobby(matchId);
+        if (myLobby?.guest) return;
         const otherId = await rolet.findOpenLobby(wallet.publicKey!);
         if (alive && otherId) {
           router.replace(`/duel?join=${otherId.toString(16)}&auto=true`);
@@ -1401,7 +1404,8 @@ function GuestLobby({ matchId, autoJoin = false }: { matchId: BN, autoJoin?: boo
   const matchHex = matchId.toString(16);
   const [joined, setJoined] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [autoTriggered, setAutoTriggered] = useState(false);
+  // useRef is synchronous — prevents double-fire from React batching setState
+  const autoTriggeredRef = useRef(false);
 
   const handleJoin = useCallback(async () => {
     if (!wallet.publicKey) return;
@@ -1416,11 +1420,11 @@ function GuestLobby({ matchId, autoJoin = false }: { matchId: BN, autoJoin?: boo
   }, [wallet.publicKey, rolet, matchId]);
 
   useEffect(() => {
-    if (autoJoin && wallet.publicKey && rolet.program && !joined && !busy && !autoTriggered) {
-      setAutoTriggered(true);
+    if (autoJoin && wallet.publicKey && rolet.program && !joined && !busy && !autoTriggeredRef.current) {
+      autoTriggeredRef.current = true;
       handleJoin();
     }
-  }, [autoJoin, wallet.publicKey, rolet.program, joined, busy, autoTriggered, handleJoin]);
+  }, [autoJoin, wallet.publicKey, rolet.program, joined, busy, handleJoin]);
 
   // After joining, poll for MatchState to appear (host calls init_match)
   useEffect(() => {
