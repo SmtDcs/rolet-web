@@ -1295,39 +1295,44 @@ function HostWaiting({ matchId }: { matchId: BN }) {
     ? `${window.location.origin}/duel?join=${matchHex}`
     : `/duel?join=${matchHex}`;
 
-  // Poll own lobby every 2s for a guest joining.
-  // Cross-check every 6s: if both players opened lobbies simultaneously,
-  // the one with the LARGER matchId abandons theirs and joins the other.
-  // No closeLobby call — abandoned lobbies stay on-chain but don't interfere
-  // because excludeHost filters them from future scans.
+  // useRolet returns a NEW object reference every render (busy is useState).
+  // Putting `rolet` in the effect's dep array means the poll fires setLobby
+  // every 2s → re-render → rolet is new → effect cleanup → 6s timer resets.
+  // The cross-check can NEVER fire. Fix: access rolet via a ref.
+  const roletRef = useRef(rolet);
+  roletRef.current = rolet;
+
+  // !!rolet.program flips once (false → true) when the wallet connects,
+  // which is the only time we actually need to (re-)start the timers.
+  const programReady = !!rolet.program;
+
   useEffect(() => {
-    if (!rolet.program || !wallet.publicKey) return;
+    if (!programReady || !wallet.publicKey) return;
     let alive = true;
 
     const poll = setInterval(async () => {
       if (!alive) return;
       try {
-        const l = await rolet.fetchLobby(matchId);
+        const l = await roletRef.current.fetchLobby(matchId);
         if (alive) setLobby(l);
       } catch { /* swallow */ }
     }, 2000);
 
     let crossCheckInterval: ReturnType<typeof setInterval> | null = null;
 
-    // Delay cross-check by 6s so normal joins have time to complete first
+    // Cross-check fires 6s after mount, then every 5s.
+    // If two players both opened lobbies, the one with the larger pubkey
+    // (deterministic) abandons its lobby and joins the other's.
     const crossCheckTimer = setTimeout(() => {
       crossCheckInterval = setInterval(async () => {
         if (!alive) return;
         try {
-          const myLobby = await rolet.fetchLobby(matchId);
-          if (myLobby?.guest) return; // Guest arrived — stay as host
+          const myLobby = await roletRef.current.fetchLobby(matchId);
+          if (myLobby?.guest) return; // Guest already arrived — stay as host
 
-          const other = await rolet.findOpenLobby(wallet.publicKey!);
+          const other = await roletRef.current.findOpenLobby(wallet.publicKey!);
           if (!alive || !other) return;
 
-          // Deterministic tiebreaker: compare wallet pubkeys as strings.
-          // The player whose pubkey is GREATER becomes the guest and joins.
-          // This guarantees exactly one side crosses over.
           if (wallet.publicKey!.toBase58() > other.host.toBase58()) {
             router.replace(`/duel?join=${other.matchId.toString(16)}&auto=true`);
           }
@@ -1335,14 +1340,17 @@ function HostWaiting({ matchId }: { matchId: BN }) {
       }, 5000);
     }, 6000);
 
-    rolet.fetchLobby(matchId).then((l) => { if (alive) setLobby(l); });
+    roletRef.current.fetchLobby(matchId).then((l) => { if (alive) setLobby(l); });
     return () => {
       alive = false;
       clearInterval(poll);
       clearTimeout(crossCheckTimer);
       if (crossCheckInterval) clearInterval(crossCheckInterval);
     };
-  }, [rolet, matchId, wallet.publicKey, router]);
+    // rolet intentionally excluded — accessed via roletRef to prevent the
+    // 6s cross-check timer from resetting on every 2s lobby poll re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [programReady, matchId, wallet.publicKey, router]);
 
   const guestReady = !!lobby?.guest;
   const autoLaunchedRef = useRef(false);
