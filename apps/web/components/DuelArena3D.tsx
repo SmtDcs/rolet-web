@@ -142,7 +142,9 @@ function CameraInit({ firing }: { firing: boolean }) {
   return null;
 }
 
-// ── World-space gun — geometry centered, depth tests disabled (debug mode) ───
+// ── World-space gun — centered geometry, live/blank-aware effects ───────────
+export type FireKind = "live" | "blank" | null;
+
 function FPSGun({
   held,
   target,
@@ -151,58 +153,41 @@ function FPSGun({
 }: {
   held: boolean;
   target: GunTarget;
-  firing: boolean;
+  firing: FireKind;
   onPickup: () => void;
 }) {
   const group = useRef<THREE.Group>(null);
   const muzzleFlash = useRef<THREE.PointLight>(null);
   const { scene } = useGLTF(MODEL_REVOLVER);
 
-  // Center the model geometry so (0,0,0) is the bounding-box center,
-  // and disable depth test/write so the gun draws on top of everything.
+  // Center the model geometry so (0,0,0) is the bounding-box center.
+  // Normal depth test / write — gun obeys depth like everything else.
   const model = useMemo(() => {
     const cloned = scene.clone(true);
-
-    // Step 1 — measure the model's untransformed bounds and shift every
-    // mesh so the assembly's bbox center sits at the cloned group origin.
     const box = new THREE.Box3().setFromObject(cloned);
     const center = box.getCenter(new THREE.Vector3());
     cloned.position.sub(center);
 
-    // Step 2 — material overrides (debug: ignore depth so gun is always on top)
     cloned.traverse((obj) => {
       if ((obj as THREE.Mesh).isMesh) {
         const m = obj as THREE.Mesh;
         m.castShadow = true;
-        m.renderOrder = 999;
-        const mats = Array.isArray(m.material) ? m.material : [m.material];
-        mats.forEach((mat) => {
-          if (mat instanceof THREE.Material) {
-            mat.depthTest = false;
-            mat.depthWrite = false;
-            mat.needsUpdate = true;
-          }
-        });
       }
     });
-
     return cloned;
   }, [scene]);
 
-  // Red BoxHelper for debugging — wraps the centered model
-  const boxHelper = useMemo(() => {
-    const h = new THREE.BoxHelper(model, 0xff0000);
-    h.renderOrder = 1000;
-    const mat = h.material as THREE.LineBasicMaterial;
-    mat.depthTest = false;
-    return h;
-  }, [model]);
+  // Rotation targets — clean Euler values now that the geometry is centered.
+  // Opponent: barrel forward (-Z world). Self: barrel back toward camera (+Z).
+  const BASE_EUL_OPP = useMemo(() => new THREE.Euler(0, Math.PI, 0), []);
+  const BASE_EUL_SELF = useMemo(() => new THREE.Euler(0, 0, 0), []);
 
-  // Rotation only — position is set declaratively below.
-  const BASE_EUL_OPP = useMemo(() => new THREE.Euler(0, -1.8, 0), []);
-  const BASE_EUL_SELF = useMemo(() => new THREE.Euler(0.3, -3.5, 0.2), []);
+  // Position targets — centered above table, raised so it doesn't clip in.
+  const BASE_POS_OPP = useMemo(() => new THREE.Vector3(0, 0.25, 0.5), []);
+  const BASE_POS_SELF = useMemo(() => new THREE.Vector3(0.05, 0.3, 0.55), []);
 
   const fireStartedAt = useRef<number | null>(null);
+  const fireKindAtStart = useRef<FireKind>(null);
 
   useFrame(({ clock }, delta) => {
     if (!group.current) return;
@@ -210,25 +195,44 @@ function FPSGun({
     const lerp = Math.min(1, delta * 6);
 
     const tgtEul = target === "self" ? BASE_EUL_SELF : BASE_EUL_OPP;
+    const tgtPos = target === "self" ? BASE_POS_SELF : BASE_POS_OPP;
+
+    group.current.position.lerp(tgtPos, lerp);
     group.current.rotation.x += (tgtEul.x - group.current.rotation.x) * lerp;
     group.current.rotation.y += (tgtEul.y - group.current.rotation.y) * lerp;
     group.current.rotation.z += (tgtEul.z - group.current.rotation.z) * lerp;
 
-    // Recoil — kicks backward (toward camera) + up-tilt
+    // Subtle aim sway when held
+    if (held) {
+      group.current.position.x += Math.sin(t * 1.3) * 0.003;
+      group.current.position.y += Math.cos(t * 1.7) * 0.003;
+    }
+
+    // Fire — different intensity for live vs blank
     if (firing && fireStartedAt.current === null) {
       fireStartedAt.current = t;
+      fireKindAtStart.current = firing;
     }
     if (fireStartedAt.current !== null) {
       const elapsed = t - fireStartedAt.current;
-      if (elapsed < 0.6) {
-        const e = Math.max(0, 1 - elapsed / 0.6);
-        group.current.position.z = 0.5 + e * 0.25;
-        group.current.position.y = 0.1 + e * 0.08;
-        if (muzzleFlash.current) muzzleFlash.current.intensity = e * 36;
+      const kind = fireKindAtStart.current;
+      const duration = kind === "live" ? 0.6 : 0.25;
+      if (elapsed < duration) {
+        const e = Math.max(0, 1 - elapsed / duration);
+        if (kind === "live") {
+          // Full recoil + flash
+          group.current.position.z += e * 0.22;
+          group.current.position.y += e * 0.06;
+          group.current.rotation.x -= e * 0.35 * delta * 6;
+          if (muzzleFlash.current) muzzleFlash.current.intensity = e * 36;
+        } else {
+          // Blank — gentle mechanical click, no flash
+          group.current.position.z += e * 0.04;
+          if (muzzleFlash.current) muzzleFlash.current.intensity = 0;
+        }
       } else {
         fireStartedAt.current = null;
-        group.current.position.z = 0.5;
-        group.current.position.y = 0.1;
+        fireKindAtStart.current = null;
         if (muzzleFlash.current) muzzleFlash.current.intensity = 0;
       }
     } else if (muzzleFlash.current) {
@@ -244,18 +248,15 @@ function FPSGun({
   return (
     <group
       ref={group}
-      position={[0.3, 0.1, 0.5]}
-      rotation={[0, -1.8, 0]}
+      position={[0, 0.25, 0.5]}
+      rotation={[0, Math.PI, 0]}
       scale={[0.5, 0.5, 0.5]}
       onClick={handleClick}
       onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
       onPointerOut={() => { document.body.style.cursor = "default"; }}
     >
       <primitive object={model} />
-      <primitive object={boxHelper} />
-      {/* Local fill light */}
       <pointLight position={[0.3, 0.5, 0.3]} color="#ffd9a0" intensity={5} distance={3} decay={2} />
-      {/* Muzzle flash */}
       <pointLight ref={muzzleFlash} position={[0, 0.2, -0.7]} color="#ffaa22" intensity={0} distance={5} decay={2} />
     </group>
   );
@@ -271,11 +272,11 @@ function Scene({
   gunHeld: boolean;
   setGunHeld: (v: boolean) => void;
   target: GunTarget;
-  firing: boolean;
+  firing: FireKind;
 }) {
   return (
     <>
-      <CameraInit firing={firing} />
+      <CameraInit firing={firing === "live"} />
       <ambientLight intensity={0.02} color="#100502" />
       <HangingSpot />
 
@@ -317,7 +318,7 @@ export default function DuelArena3D({
   gunHeld: boolean;
   setGunHeld: (v: boolean) => void;
   target: GunTarget;
-  firing: boolean;
+  firing: FireKind;
 }) {
   // Reference isYourTurn so it's not "unused" — could drive scene mood later
   void isYourTurn;

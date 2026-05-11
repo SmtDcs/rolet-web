@@ -225,7 +225,7 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
 
   // ── Gun state ──────────────────────────────────────────────────────────────
   const [gunHeld, setGunHeld] = useState(false);
-  const [firing, setFiring] = useState(false);
+  const [firing, setFiring] = useState<"live" | "blank" | null>(null);
 
   const youKey = wallet.publicKey?.toBase58() ?? null;
   const decoded = useMemo(() => decodeMatch(state, youKey), [state, youKey]);
@@ -356,15 +356,34 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
 
   const handlePullTrigger = async () => {
     if (!decoded) return;
-    setLog((l) => [`> trigger → ${target.toUpperCase()}…`, ...l].slice(0, 24));
-    triggerShake();
-    setFiring(true);
-    setTimeout(() => setFiring(false), 650);
+    // Read the chamber that's about to fire so we can play the right effect
+    // BEFORE the on-chain tx resolves (snappier UX).
+    const chamberType = decoded.chambers[decoded.currentChamber] ?? "live";
+    const isLive = chamberType === "live";
+    setLog((l) => [
+      `> trigger → ${target.toUpperCase()} · ${isLive ? "LIVE" : "BLANK"}`,
+      ...l,
+    ].slice(0, 24));
+
+    if (isLive) {
+      // Full effects: shake + recoil + muzzle flash + fullscreen flash
+      triggerShake();
+      setFiring("live");
+      setTimeout(() => setFiring(null), 650);
+    } else {
+      // Blank: mechanical click only — no flash, no big shake
+      setFiring("blank");
+      setTimeout(() => setFiring(null), 280);
+    }
+
     await rolet.pullTrigger({
       matchId,
       targetSelf: target === "self",
       currentTurnAuthority: new PublicKey(decoded.currentTurn),
     });
+    // Re-fetch so the on-chain state (HP, current chamber, turn) updates the
+    // UI immediately. Buckshot rules: self+blank keeps your turn, everything
+    // else passes the gun — the chain enforces this, we just reflect it.
     const fresh = await rolet.fetchMatch(matchId);
     if (fresh) setState(fresh);
   };
@@ -459,9 +478,9 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
         )}
       </AnimatePresence>
 
-      {/* Muzzle FLASH overlay — white/yellow, instant when PULL TRIGGER fires */}
+      {/* Muzzle FLASH overlay — only fires for LIVE chambers */}
       <AnimatePresence>
-        {firing && (
+        {firing === "live" && (
           <motion.div
             key="fire-flash"
             className="pointer-events-none fixed inset-0 z-[99] mix-blend-screen"
