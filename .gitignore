@@ -20,3 +20,4 @@ apps/server/migrations/.reward-mint.json
 .vscode/
 .idea/
 *.swp
+.vercel
