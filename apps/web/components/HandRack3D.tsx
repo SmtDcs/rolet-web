@@ -226,29 +226,37 @@ function Card3D({
   const frontTex = useMemo(() => (card ? makeFrontTexture(card) : null), [card]);
   const backTex = useMemo(() => makeBackTexture(), []);
 
-  // Fan base (idle pose) — symmetric around index center
+  // Fan base — tighter spacing so cards overlap more (Buckshot-style hand)
   const offset = slotIndex - (totalSlots - 1) / 2;
-  const baseX = offset * 0.62;
-  const baseY = -Math.abs(offset) * 0.03;
-  const baseRotZ = -offset * 0.07;
+  const baseX = offset * 0.42;
+  const baseY = -Math.abs(offset) * 0.045;
+  const baseZ = -Math.abs(offset) * 0.02; // edge cards slightly behind
+  const baseRotZ = -offset * 0.1;
 
   useFrame((_, delta) => {
     if (!ref.current) return;
     const lerp = Math.min(1, delta * 8);
-    const lift = selected ? 0.4 : hovered && !disabled ? 0.2 : 0;
-    const tiltX = selected ? -0.25 : hovered && !disabled ? -0.14 : 0;
-    // When disabled (not your turn / no card), flip to back (rotateY 180°)
+    // Bigger lift on hover/selected — more dramatic FPS card feel
+    const lift = selected ? 0.55 : hovered && !disabled ? 0.32 : 0;
+    const tiltX = selected ? -0.32 : hovered && !disabled ? -0.2 : 0;
+    // Selected card pops forward in Z too so it doesn't get covered
+    const liftZ = selected ? 0.35 : hovered && !disabled ? 0.2 : 0;
     const flipY = disabled ? Math.PI : 0;
 
     ref.current.position.x += (baseX - ref.current.position.x) * lerp;
     ref.current.position.y += ((baseY + lift) - ref.current.position.y) * lerp;
+    ref.current.position.z += ((baseZ + liftZ) - ref.current.position.z) * lerp;
     ref.current.rotation.x += (tiltX - ref.current.rotation.x) * lerp;
     ref.current.rotation.y += (flipY - ref.current.rotation.y) * lerp;
     ref.current.rotation.z += (baseRotZ - ref.current.rotation.z) * lerp;
 
-    // Selected glow pulse
+    // Strong selected glow pulse
     if (frontMat.current) {
-      const target = selected ? 0.5 + Math.sin(performance.now() / 200) * 0.15 : 0;
+      const target = selected
+        ? 0.85 + Math.sin(performance.now() / 180) * 0.25
+        : hovered && !disabled
+        ? 0.35
+        : 0.0;
       frontMat.current.emissiveIntensity += (target - frontMat.current.emissiveIntensity) * lerp;
     }
   });
@@ -276,9 +284,9 @@ function Card3D({
         document.body.style.cursor = "default";
       }}
     >
-      {/* Front face */}
+      {/* Front face — bigger, slightly translucent */}
       <mesh>
-        <planeGeometry args={[0.58, 0.82]} />
+        <planeGeometry args={[0.95, 1.34]} />
         <meshStandardMaterial
           ref={frontMat}
           map={frontTex ?? undefined}
@@ -286,14 +294,19 @@ function Card3D({
           side={THREE.FrontSide}
           emissive="#cc1818"
           emissiveIntensity={0}
-          transparent={!card}
-          opacity={card ? 1 : 0.5}
+          transparent
+          opacity={card ? 0.78 : 0.4}
         />
       </mesh>
       {/* Back face */}
       <mesh rotation={[0, Math.PI, 0]}>
-        <planeGeometry args={[0.58, 0.82]} />
-        <meshStandardMaterial map={backTex} side={THREE.FrontSide} />
+        <planeGeometry args={[0.95, 1.34]} />
+        <meshStandardMaterial
+          map={backTex}
+          side={THREE.FrontSide}
+          transparent
+          opacity={0.85}
+        />
       </mesh>
     </group>
   );
@@ -313,14 +326,14 @@ export default function HandRack3D({
 }) {
   return (
     <Canvas
-      camera={{ position: [0, 0.1, 1.85], fov: 38 }}
+      camera={{ position: [0, 0.15, 2.05], fov: 42 }}
       gl={{ antialias: true, alpha: true }}
       style={{ width: "100%", height: "100%", pointerEvents: "auto" }}
     >
-      <ambientLight intensity={0.55} color="#fff5d4" />
-      <pointLight position={[0, 1.2, 2]} intensity={1.5} color="#ffd8a0" />
-      <pointLight position={[-1.5, 0.4, 1]} intensity={0.5} color="#ff9966" />
-      <pointLight position={[1.5, 0.4, 1]} intensity={0.5} color="#ff9966" />
+      <ambientLight intensity={0.6} color="#fff5d4" />
+      <pointLight position={[0, 1.2, 2]} intensity={1.8} color="#ffd8a0" />
+      <pointLight position={[-1.5, 0.4, 1]} intensity={0.6} color="#ff9966" />
+      <pointLight position={[1.5, 0.4, 1]} intensity={0.6} color="#ff9966" />
 
       {hand.slice(0, 4).map((card, i) => (
         <Card3D

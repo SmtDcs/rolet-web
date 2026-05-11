@@ -27,6 +27,8 @@
   --animate-turn-in: rolet-turn-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   --animate-chamber-current: rolet-chamber-current 1.2s ease-in-out infinite;
   --animate-scan-line: rolet-scan-line 3s linear infinite;
+  --animate-red-alert: rolet-red-alert 0.6s ease-in-out infinite;
+  --animate-grain: rolet-grain 0.8s steps(8) infinite;
 }
 
 /* ──────────────────────────────────────────────────────────────
@@ -157,6 +159,69 @@
 @keyframes rolet-scan-line {
   0%   { transform: translateY(-100%); }
   100% { transform: translateY(100vh); }
+}
+
+@keyframes rolet-red-alert {
+  0%, 100% {
+    background-color: rgba(120, 0, 0, 0.4);
+    box-shadow: inset 0 0 22px rgba(255, 0, 0, 0.7), 0 0 22px rgba(255, 0, 0, 0.5);
+  }
+  50% {
+    background-color: rgba(220, 20, 20, 0.7);
+    box-shadow: inset 0 0 36px rgba(255, 60, 60, 1), 0 0 44px rgba(255, 20, 20, 0.85);
+  }
+}
+
+@keyframes rolet-grain {
+  0%   { background-position: 0 0; }
+  20%  { background-position: -7px 5px; }
+  40%  { background-position: 5px -3px; }
+  60%  { background-position: -3px -7px; }
+  80%  { background-position: 7px 3px; }
+  100% { background-position: 0 0; }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   CRT / pixelated UI utilities
+   ────────────────────────────────────────────────────────────── */
+@utility crt-text {
+  text-shadow:
+    -1px 0 rgba(0, 220, 255, 0.45),
+    1px 0 rgba(255, 0, 50, 0.55),
+    0 0 8px rgba(255, 50, 30, 0.35);
+  image-rendering: pixelated;
+  letter-spacing: 0.04em;
+}
+
+@utility crt-frame {
+  position: relative;
+  box-shadow:
+    inset 0 0 0 1px rgba(120, 60, 20, 0.4),
+    inset 0 0 16px rgba(60, 20, 10, 0.6),
+    0 0 0 1px rgba(0, 0, 0, 0.8);
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(0deg, rgba(255, 200, 180, 0.06) 0 1px, transparent 1px 3px);
+    mix-blend-mode: screen;
+  }
+}
+
+@utility crt-grain {
+  position: relative;
+  overflow: hidden;
+  &::after {
+    content: "";
+    position: absolute;
+    inset: -10px;
+    pointer-events: none;
+    opacity: 0.08;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='1'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.65'/></svg>");
+    animation: rolet-grain 0.8s steps(8) infinite;
+  }
 }
 
 /* ──────────────────────────────────────────────────────────────

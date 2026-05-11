@@ -232,9 +232,9 @@ function FPSGun({
   const BASE_EUL_OPP = useMemo(() => new THREE.Euler(0, 0, 0), []);
   const BASE_EUL_SELF = useMemo(() => new THREE.Euler(0, Math.PI, 0), []);
 
-  // Position targets — sitting on the table top (lower y after the scale cut).
-  const BASE_POS_OPP = useMemo(() => new THREE.Vector3(0.15, 0.15, 0.6), []);
-  const BASE_POS_SELF = useMemo(() => new THREE.Vector3(0.15, 0.15, 0.6), []);
+  // Position targets — resting on the table top, no clipping into wood.
+  const BASE_POS_OPP = useMemo(() => new THREE.Vector3(0.15, 0.28, 0.55), []);
+  const BASE_POS_SELF = useMemo(() => new THREE.Vector3(0.15, 0.28, 0.55), []);
 
   const fireStartedAt = useRef<number | null>(null);
   const fireKindAtStart = useRef<FireKind>(null);
@@ -252,10 +252,10 @@ function FPSGun({
     group.current.rotation.y += (tgtEul.y - group.current.rotation.y) * lerp;
     group.current.rotation.z += (tgtEul.z - group.current.rotation.z) * lerp;
 
-    // Subtle aim sway when held
+    // Extremely subtle aim sway — barely noticeable, no more swinging
     if (held) {
-      group.current.position.x += Math.sin(t * 1.3) * 0.003;
-      group.current.position.y += Math.cos(t * 1.7) * 0.003;
+      group.current.position.x += Math.sin(t * 0.8) * 0.0006;
+      group.current.position.y += Math.cos(t * 1.0) * 0.0006;
     }
 
     // Fire — different intensity for live vs blank
@@ -298,9 +298,9 @@ function FPSGun({
   return (
     <group
       ref={group}
-      position={[0.15, 0.15, 0.6]}
+      position={[0.15, 0.28, 0.55]}
       rotation={[0, 0, 0]}
-      scale={[0.25, 0.25, 0.25]}
+      scale={[0.2, 0.2, 0.2]}
       onClick={handleClick}
       onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
       onPointerOut={() => { document.body.style.cursor = "default"; }}

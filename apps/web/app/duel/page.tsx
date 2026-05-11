@@ -532,25 +532,38 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
           zIndex: 2,
         }}
       />
+      {/* Global CRT scanlines — fixed overlay above the 3D, below UI panels */}
       <div
-        className="absolute inset-0 pointer-events-none opacity-[0.04]"
+        className="absolute inset-0 pointer-events-none"
         style={{
           backgroundImage:
-            "repeating-linear-gradient(90deg, rgba(120,70,30,0.4) 0 1px, transparent 1px 140px)",
-          zIndex: 2,
+            "repeating-linear-gradient(0deg, rgba(0,0,0,0.18) 0 1px, transparent 1px 3px)",
+          mixBlendMode: "multiply",
+          zIndex: 8,
+        }}
+      />
+      {/* Global film grain — subtle, animated */}
+      <div
+        className="absolute inset-0 pointer-events-none animate-grain"
+        style={{
+          backgroundImage:
+            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='1'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/></svg>\")",
+          opacity: 0.08,
+          mixBlendMode: "overlay",
+          zIndex: 8,
         }}
       />
 
       {/* Top bar */}
       <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between px-6 py-4 border-b border-rust/40 bg-black/40 backdrop-blur-sm">
-        <Link href="/" className="text-[10px] tracking-[0.4em] text-rust hover:text-red-500">
+        <Link href="/" className="text-[10px] tracking-[0.4em] text-rust hover:text-red-500 crt-text">
           ◄ ABANDON ROOM
         </Link>
-        <span className="text-[10px] tracking-[0.4em] text-zinc-600">
+        <span className="text-[10px] tracking-[0.4em] text-zinc-400 crt-text">
           MATCH 0x{matchId.toString(16).toUpperCase()} · ER://magicblock-edge
           {rolet.isEphemeral && <span className="ml-2 text-red-700">· ER ACTIVE</span>}
         </span>
-        <span className="text-[10px] tracking-[0.4em] text-red-700 animate-pulse">
+        <span className="text-[10px] tracking-[0.4em] text-red-500 animate-pulse crt-text">
           ● {decoded?.status?.toUpperCase() ?? "AWAITING"}
         </span>
       </div>
@@ -609,10 +622,10 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
           )}
 
           <div className="grid grid-cols-12 gap-3 items-end">
-            {/* Slim player vitals */}
-            <div className="col-span-2 border border-rust/60 bg-black/70 backdrop-blur-sm p-2">
-              <div className="flex items-center justify-between text-[8px] tracking-[0.35em] text-rust">
-                <span>// YOU</span>
+            {/* Slim player vitals — Buckshot pixelated HP */}
+            <div className="col-span-2 crt-frame crt-grain border border-rust/60 bg-black/70 backdrop-blur-sm p-2">
+              <div className="flex items-center justify-between text-[8px] tracking-[0.35em] text-rust crt-text">
+                <span>// SUBJECT_01</span>
                 <span className={turnIsYours ? "text-red-400 animate-pulse" : "text-zinc-600"}>
                   {turnIsYours ? "TURN" : "WAIT"}
                 </span>
@@ -620,13 +633,13 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
               <div className="mt-2">
                 <HpBar hp={playerHp} maxHp={4} accent="player" />
               </div>
-              <div className="mt-1 text-center text-[9px] tracking-[0.3em] text-zinc-500">
+              <div className="mt-1 text-center text-[9px] tracking-[0.3em] text-zinc-400 crt-text">
                 HP {playerHp}/4
               </div>
             </div>
 
-            {/* 3D card hand */}
-            <div className="col-span-7 relative h-32">
+            {/* 3D card hand — taller container so the bigger cards fit */}
+            <div className="col-span-7 relative h-44">
               <HandRack3D
                 hand={decoded?.yourHand ?? [null, null, null, null]}
                 selectedSlot={selectedSlot}
@@ -638,16 +651,16 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
                 <button
                   onClick={handlePlayCard}
                   disabled={rolet.busy}
-                  className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 border border-red-500 bg-black/85 backdrop-blur-sm px-4 py-1.5 text-[10px] tracking-[0.4em] text-red-300 font-bold shadow-[0_0_18px_rgba(220,30,30,0.6)] hover:bg-red-950/60 disabled:opacity-40"
+                  className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 border border-red-500 bg-black/85 backdrop-blur-sm px-4 py-1.5 text-[10px] tracking-[0.4em] text-red-300 font-bold shadow-[0_0_18px_rgba(220,30,30,0.6)] hover:bg-red-950/60 disabled:opacity-40 crt-text"
                 >
                   ▶ PLAY {CARD_LABEL[decoded.yourHand[selectedSlot]!].toUpperCase()}
                 </button>
               )}
             </div>
 
-            {/* Slim action panel */}
-            <div className="col-span-3 border border-rust/60 bg-black/70 backdrop-blur-sm p-2 flex flex-col gap-2">
-              <div className="text-[8px] tracking-[0.4em] text-rust">// FIRING SOLUTION</div>
+            {/* Slim action panel — grain texture, pixelated border */}
+            <div className="col-span-3 crt-frame crt-grain border border-rust/60 bg-black/70 backdrop-blur-sm p-2 flex flex-col gap-2">
+              <div className="text-[8px] tracking-[0.4em] text-rust crt-text">// FIRING SOLUTION</div>
               <div className="grid grid-cols-2 gap-1">
                 <TargetButton label="OPP" active={target === "opponent"} onClick={() => setTarget("opponent")} />
                 <TargetButton label="SELF" active={target === "self"} onClick={() => setTarget("self")} />
@@ -662,26 +675,34 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
                     "0 0 10px rgba(220,30,30,0.4), inset 0 0 12px rgba(120,0,0,0.3)",
                   ],
                 } : { boxShadow: "none" }}
-                whileHover={turnIsYours && !rolet.busy ? { scale: 1.03 } : {}}
-                whileTap={turnIsYours && !rolet.busy ? { scale: 0.97 } : {}}
-                transition={turnIsYours && !rolet.busy ? { boxShadow: { duration: 2.0, repeat: Infinity, ease: "easeInOut" } } : {}}
-                className={`py-2.5 border-2 font-display tracking-[0.3em] text-sm transition-colors ${
+                whileHover={turnIsYours && !rolet.busy ? { scale: 1.04 } : {}}
+                whileTap={turnIsYours && !rolet.busy ? { scale: 0.96 } : {}}
+                transition={turnIsYours && !rolet.busy ? { boxShadow: { duration: 1.6, repeat: Infinity, ease: "easeInOut" } } : {}}
+                className={`group relative py-2.5 border-2 font-display tracking-[0.3em] text-sm transition-colors overflow-hidden ${
                   !turnIsYours || rolet.busy
                     ? "border-rust/40 text-rust/40 cursor-not-allowed"
-                    : "border-red-600 bg-gradient-to-b from-red-950/60 to-black text-red-400 text-bleed hover:text-red-200"
+                    : "border-red-600 bg-gradient-to-b from-red-950/60 to-black text-red-400 text-bleed hover:text-red-100 hover:animate-red-alert"
                 }`}
               >
-                ▼ PULL TRIGGER
+                <span className="crt-text relative z-10">▼ PULL TRIGGER</span>
+                {turnIsYours && !rolet.busy && (
+                  <div className="absolute inset-0 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity"
+                    style={{
+                      backgroundImage:
+                        "repeating-linear-gradient(0deg, rgba(255,30,30,0.18) 0 1px, transparent 1px 3px)",
+                    }}
+                  />
+                )}
               </motion.button>
             </div>
           </div>
 
           {/* Compact 1-line log */}
-          <div className="border border-rust/50 bg-black/70 backdrop-blur-sm px-3 py-1.5 flex items-center justify-between">
-            <div className="font-mono text-[10px] leading-none tracking-wide text-zinc-300 truncate">
+          <div className="crt-frame crt-grain border border-rust/50 bg-black/70 backdrop-blur-sm px-3 py-1.5 flex items-center justify-between">
+            <div className="font-mono text-[10px] leading-none tracking-wide text-zinc-300 truncate crt-text">
               {log[0]}
             </div>
-            <div className="text-[9px] tracking-[0.4em] text-zinc-600 shrink-0 ml-2">
+            <div className="text-[9px] tracking-[0.4em] text-zinc-600 shrink-0 ml-2 crt-text">
               {rolet.sessionKey ? `SK ${rolet.sessionKey.toBase58().slice(0, 6)}…` : "NO SK"}
             </div>
           </div>
@@ -853,6 +874,8 @@ function OpponentHud({
   );
 }
 
+// Buckshot-style HP bar: chunky pixelated cells, each cell ~3x4 grid of
+// sub-pixels that go dark when that HP unit is gone.
 function HpBar({
   hp,
   maxHp,
@@ -862,56 +885,55 @@ function HpBar({
   maxHp: number;
   accent: "player" | "opponent";
 }) {
-  const pct = (hp / maxHp) * 100;
   const low = hp <= 1;
   const mid = hp === 2;
-  const barColor = low
-    ? "#dc2020"
-    : mid
-    ? "#cc5500"
-    : accent === "player"
-    ? "#991a1a"
-    : "#7a1212";
+  const aliveColor = low ? "#ff2020" : mid ? "#dd6600" : accent === "player" ? "#cc1a1a" : "#aa1010";
+  const aliveGlow = low ? "#ff5050" : mid ? "#ff9933" : accent === "player" ? "#ff3030" : "#dd2020";
 
   return (
-    <div className="w-full">
-      {/* Segmented pips */}
-      <div className="flex gap-1 mb-2">
-        {Array.from({ length: maxHp }).map((_, i) => {
-          const alive = i < hp;
-          return (
-            <motion.div
-              key={i}
-              layout
-              animate={alive ? {
-                backgroundColor: low ? "#ff2020" : mid ? "#dd6600" : barColor,
-                boxShadow: alive && low
-                  ? ["0 0 8px #ff2020aa", "0 0 22px #ff2020", "0 0 8px #ff2020aa"]
-                  : alive
-                  ? `0 0 10px ${barColor}88`
-                  : "none",
-              } : {
-                backgroundColor: "#111",
-                boxShadow: "none",
-              }}
-              transition={low && alive ? {
-                boxShadow: { duration: 0.9, repeat: Infinity, ease: "easeInOut" },
-                backgroundColor: { duration: 0.2 },
-              } : { duration: 0.3 }}
-              className="h-5 flex-1 border border-zinc-800"
-            />
-          );
-        })}
-      </div>
-      {/* Progress bar */}
-      <div className="h-1.5 w-full bg-zinc-900 overflow-hidden">
-        <motion.div
-          className="h-full"
-          animate={{ width: `${pct}%`, backgroundColor: barColor }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
-          style={{ boxShadow: `0 0 8px ${barColor}` }}
-        />
-      </div>
+    <div className="flex gap-1.5 w-full">
+      {Array.from({ length: maxHp }).map((_, i) => {
+        const alive = i < hp;
+        const cells = 8; // 4×2 sub-pixel grid inside each cell
+        return (
+          <motion.div
+            key={i}
+            className="relative flex-1 h-6 border border-zinc-800"
+            style={{ imageRendering: "pixelated" as const }}
+            animate={
+              alive && low
+                ? {
+                    boxShadow: [
+                      `0 0 8px ${aliveGlow}aa`,
+                      `0 0 22px ${aliveGlow}`,
+                      `0 0 8px ${aliveGlow}aa`,
+                    ],
+                  }
+                : alive
+                ? { boxShadow: `0 0 8px ${aliveGlow}66` }
+                : { boxShadow: "none" }
+            }
+            transition={
+              low && alive
+                ? { boxShadow: { duration: 0.9, repeat: Infinity, ease: "easeInOut" } }
+                : { duration: 0.3 }
+            }
+          >
+            {/* Pixelated cell grid */}
+            <div className="absolute inset-0 grid grid-rows-2 grid-cols-4 gap-px p-px">
+              {Array.from({ length: cells }).map((_, j) => (
+                <div
+                  key={j}
+                  style={{
+                    backgroundColor: alive ? aliveColor : "#0e0606",
+                    boxShadow: alive ? `inset 0 0 2px ${aliveGlow}` : "none",
+                  }}
+                />
+              ))}
+            </div>
+          </motion.div>
+        );
+      })}
     </div>
   );
 }
