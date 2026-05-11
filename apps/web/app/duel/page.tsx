@@ -1312,13 +1312,20 @@ function HostWaiting({ matchId }: { matchId: BN }) {
     const crossCheck = setInterval(async () => {
       if (!alive) return;
       try {
-        // If our own lobby already has a guest, stay as host — don't cross-join
+        // Stay as host if someone already joined our lobby
         const myLobby = await rolet.fetchLobby(matchId);
         if (myLobby?.guest) return;
+
         const otherId = await rolet.findOpenLobby(wallet.publicKey!);
-        if (alive && otherId) {
+        if (!alive || !otherId) return;
+
+        // Deterministic tiebreaker: only the player whose matchId is LARGER
+        // becomes the guest. This prevents both players from cross-joining
+        // each other simultaneously when lobbies open at the same time.
+        if (matchId.gt(otherId)) {
           router.replace(`/duel?join=${otherId.toString(16)}&auto=true`);
         }
+        // If our matchId is smaller, we stay as host and wait for the other side to join us.
       } catch { /* swallow */ }
     }, 4000);
 
