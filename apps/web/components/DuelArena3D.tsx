@@ -13,9 +13,9 @@ import {
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 
-const MODEL_TABLE = "/models/Small Table.glb";
-const MODEL_REVOLVER = "/models/Revolver.glb";
-const MODEL_LANTERN = "/models/Lantern.glb";
+const MODEL_TABLE = "/models/table.glb";
+const MODEL_REVOLVER = "/models/revolver.glb";
+const MODEL_LANTERN = "/models/lantern.glb";
 const MODEL_BULLET = "/models/mermi.glb";
 
 // ── Loading fallback ──────────────────────────────────────────────────────────
@@ -202,7 +202,7 @@ export default function DuelArena3D({ isYourTurn }: { isYourTurn: boolean }) {
         toneMapping: THREE.ACESFilmicToneMapping,
         toneMappingExposure: 0.7,
       }}
-      style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "#000000" }}
+      style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none", background: "#000000", zIndex: 1 }}
     >
       {/* Pure black background */}
       <color attach="background" args={["#000000"]} />

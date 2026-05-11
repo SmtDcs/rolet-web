@@ -497,21 +497,21 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
         ))}
       </AnimatePresence>
 
-      {/* Room atmosphere overlay — kept on top of 3D for CRT feel */}
+      {/* Room atmosphere overlay — subtle tint above 3D, below UI */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse at 50% 30%, rgba(80, 35, 15, 0.18) 0%, rgba(10, 6, 4, 0.55) 65%)",
-          zIndex: 1,
+            "radial-gradient(ellipse at 50% 30%, transparent 0%, rgba(10, 6, 4, 0.4) 75%)",
+          zIndex: 2,
         }}
       />
       <div
-        className="absolute inset-0 pointer-events-none opacity-[0.06]"
+        className="absolute inset-0 pointer-events-none opacity-[0.04]"
         style={{
           backgroundImage:
             "repeating-linear-gradient(90deg, rgba(120,70,30,0.4) 0 1px, transparent 1px 140px)",
-          zIndex: 1,
+          zIndex: 2,
         }}
       />
 
@@ -600,7 +600,7 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
           </div>
 
           {/* Cursed terminal log — sourced from real toasts + ER deltas */}
-          <div className="border border-rust/50 bg-black/70 px-4 py-3 max-h-32 overflow-hidden">
+          <div className="border border-rust/50 bg-black/35 backdrop-blur-md px-4 py-3 max-h-32 overflow-hidden">
             <div className="flex items-center justify-between">
               <div className="text-[9px] tracking-[0.4em] text-rust">// LOG</div>
               <div className="text-[9px] tracking-[0.4em] text-zinc-700">
@@ -798,7 +798,7 @@ function OpponentHud({
   status: string;
 }) {
   return (
-    <div className="mt-3 flex items-center gap-4 border border-rust/60 bg-black/60 px-4 py-2">
+    <div className="mt-3 flex items-center gap-4 border border-rust/60 bg-black/35 backdrop-blur-md px-4 py-2">
       <div className="text-[10px] tracking-[0.4em] text-zinc-500">OPPONENT</div>
       <HpBar hp={hp} maxHp={maxHp} accent="opponent" />
       <div className="text-[10px] tracking-[0.4em] text-rust">
@@ -818,7 +818,7 @@ function PlayerVitals({
   turnIsYours: boolean;
 }) {
   return (
-    <div className="col-span-3 border border-rust/60 bg-black/70 p-3">
+    <div className="col-span-3 border border-rust/60 bg-black/35 backdrop-blur-md p-3">
       <div className="flex items-center justify-between text-[9px] tracking-[0.4em] text-rust">
         <span>// SUBJECT_01 (YOU)</span>
         <span className={turnIsYours ? "text-red-500 animate-pulse" : "text-zinc-700"}>
@@ -912,7 +912,7 @@ function HandRack({
   disabled: boolean;
 }) {
   return (
-    <div className="col-span-6 border border-rust/60 bg-black/70 p-3">
+    <div className="col-span-6 border border-rust/60 bg-black/35 backdrop-blur-md p-3">
       <div className="flex items-center justify-between text-[9px] tracking-[0.4em] text-rust mb-3">
         <span>// HAND · 4 SLOTS</span>
         {selectedSlot !== null && hand[selectedSlot] && (
@@ -1011,7 +1011,7 @@ function ActionPanel({
   disabled: boolean;
 }) {
   return (
-    <div className="col-span-3 border border-rust/60 bg-black/70 p-3 flex flex-col gap-3">
+    <div className="col-span-3 border border-rust/60 bg-black/35 backdrop-blur-md p-3 flex flex-col gap-3">
       <div className="text-[9px] tracking-[0.4em] text-rust">// FIRING SOLUTION</div>
 
       <div className="grid grid-cols-2 gap-2">
