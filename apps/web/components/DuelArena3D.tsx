@@ -122,12 +122,25 @@ function HangingSpot() {
   );
 }
 
-// ── Camera — fixed creepy high-angle view of the table ────────────────────────
-function CameraInit() {
-  useFrame(({ camera, clock }) => {
-    const sway = Math.sin(clock.elapsedTime * 0.3) * 0.008;
-    camera.position.set(0.05 + sway, 0.78, 1.15);
-    camera.lookAt(0, 0.0, -0.05);
+// ── Camera — close-up first-person view, FOV widens on fire for impact ───────
+function CameraInit({ firing, held }: { firing: boolean; held: boolean }) {
+  useFrame(({ camera, clock }, delta) => {
+    const lerp = Math.min(1, delta * 4);
+    const sway = Math.sin(clock.elapsedTime * 0.45) * 0.008;
+    const targetZ = held ? 0.65 : 0.85; // pulled in when held
+    const targetY = held ? 0.58 : 0.7;
+    camera.position.x += (0.04 + sway - camera.position.x) * lerp;
+    camera.position.y += (targetY - camera.position.y) * lerp;
+    camera.position.z += (targetZ - camera.position.z) * lerp;
+    camera.lookAt(0, 0.05, -0.05);
+
+    // FOV punch on fire — muzzle blast feels closer
+    if ("fov" in camera) {
+      const persp = camera as THREE.PerspectiveCamera;
+      const targetFov = firing ? 62 : 52;
+      persp.fov += (targetFov - persp.fov) * lerp;
+      persp.updateProjectionMatrix();
+    }
   });
   return null;
 }
@@ -170,65 +183,81 @@ function InteractiveRevolver({
   }, [scene]);
 
   // Pose targets ──────────────────────────────────────────────────────────────
-  // ON_TABLE  — laying on the table, grip toward player
+  // ON_TABLE — world-space position on the table
   const TABLE_POS = useMemo(() => new THREE.Vector3(0.05, 0.05, 0.0), []);
-  const TABLE_EUL = useMemo(() => new THREE.Euler(0, 0.55, 0), []);
+  const TABLE_QUAT = useMemo(
+    () => new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0.55, 0)),
+    []
+  );
 
-  // HELD aiming at OPPONENT — close to camera, barrel forward (-Z)
-  const HELD_OPP_POS = useMemo(() => new THREE.Vector3(0.25, 0.42, 0.5), []);
-  const HELD_OPP_EUL = useMemo(() => new THREE.Euler(0, Math.PI, 0), []);
+  // HELD — camera-LOCAL offset (bottom-right of view, FPS style)
+  // applied each frame as camera_pos + offset.applyQuaternion(camera_quat)
+  const HELD_OPP_OFFSET = useMemo(() => new THREE.Vector3(0.52, -0.38, -0.78), []);
+  const HELD_SELF_OFFSET = useMemo(() => new THREE.Vector3(0.32, -0.22, -0.55), []);
 
-  // HELD aiming at SELF — pointing back at camera
-  const HELD_SELF_POS = useMemo(() => new THREE.Vector3(0.18, 0.4, 0.45), []);
-  const HELD_SELF_EUL = useMemo(() => new THREE.Euler(0, 0, 0), []);
+  // Held rotation: align gun to camera, then apply target-specific extra
+  // Opponent: gun's barrel points away from camera (-Z in camera space).
+  //   Model's barrel is +Z by default → rotate Math.PI on Y.
+  // Self: barrel points up-back toward camera face — gun is tilted inward.
+  const HELD_OPP_EXTRA = useMemo(
+    () => new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0)),
+    []
+  );
+  const HELD_SELF_EXTRA = useMemo(
+    () => new THREE.Quaternion().setFromEuler(new THREE.Euler(0.45, -0.6, 0.25)),
+    []
+  );
 
-  // Fire state (internal): keeps recoil playing for ~600ms even if prop flips
+  // Scratch vectors (avoid per-frame GC)
+  const _worldPos = useMemo(() => new THREE.Vector3(), []);
+  const _targetQuat = useMemo(() => new THREE.Quaternion(), []);
+
   const fireStartedAt = useRef<number | null>(null);
-  useFrame((state, delta) => {
+
+  useFrame(({ camera, clock }, delta) => {
     if (!group.current) return;
-    const lerp = Math.min(1, delta * 5);
+    const lerp = Math.min(1, delta * 6);
 
-    const targetPos = held
-      ? target === "self" ? HELD_SELF_POS : HELD_OPP_POS
-      : TABLE_POS;
-    const targetEul = held
-      ? target === "self" ? HELD_SELF_EUL : HELD_OPP_EUL
-      : TABLE_EUL;
+    // ── Target pose ──────────────────────────────────────────────────────────
+    if (held) {
+      // Camera-attached: offset in camera-local space
+      const offset = target === "self" ? HELD_SELF_OFFSET : HELD_OPP_OFFSET;
+      _worldPos.copy(offset).applyQuaternion(camera.quaternion).add(camera.position);
 
-    // Lerp position
-    group.current.position.lerp(targetPos, lerp);
-    // Lerp Euler (per-axis)
-    group.current.rotation.x += (targetEul.x - group.current.rotation.x) * lerp;
-    group.current.rotation.y += (targetEul.y - group.current.rotation.y) * lerp;
-    group.current.rotation.z += (targetEul.z - group.current.rotation.z) * lerp;
+      // Rotation = camera quaternion * extra (target-specific)
+      const extra = target === "self" ? HELD_SELF_EXTRA : HELD_OPP_EXTRA;
+      _targetQuat.copy(camera.quaternion).multiply(extra);
+    } else {
+      _worldPos.copy(TABLE_POS);
+      _targetQuat.copy(TABLE_QUAT);
+    }
 
-    // Idle float when on table, gentle aim sway when held
-    const t = state.clock.elapsedTime;
+    // Lerp toward target
+    group.current.position.lerp(_worldPos, lerp);
+    group.current.quaternion.slerp(_targetQuat, lerp);
+
+    // Subtle aim sway / table float
+    const t = clock.elapsedTime;
     if (!held) {
       group.current.position.y += Math.sin(t * 0.8) * 0.003;
     } else {
-      // Aim sway
-      group.current.position.x += Math.sin(t * 1.3) * 0.0015;
-      group.current.position.y += Math.cos(t * 1.7) * 0.0015;
+      group.current.position.x += Math.sin(t * 1.3) * 0.0018;
+      group.current.position.y += Math.cos(t * 1.7) * 0.0018;
     }
 
-    // Recoil — short backward kick + slight upward tilt
+    // ── Recoil + muzzle flash ────────────────────────────────────────────────
     if (firing && fireStartedAt.current === null) {
       fireStartedAt.current = t;
     }
     if (fireStartedAt.current !== null) {
       const elapsed = t - fireStartedAt.current;
       if (elapsed < 0.65) {
-        // Ease-out pulse
         const e = Math.max(0, 1 - elapsed / 0.65);
-        const kick = Math.sin(elapsed * 25) * e * 0.06;
-        const tiltX = e * 0.18;
-        group.current.position.z += kick;
-        group.current.rotation.x -= tiltX * delta * 4;
-
-        if (muzzleFlash.current) {
-          muzzleFlash.current.intensity = e * 18;
-        }
+        // Recoil kicks the gun backward (toward camera) along view axis
+        const kickLocal = new THREE.Vector3(0, e * 0.04, e * 0.12);
+        const kickWorld = kickLocal.applyQuaternion(camera.quaternion);
+        group.current.position.add(kickWorld);
+        if (muzzleFlash.current) muzzleFlash.current.intensity = e * 28;
       } else {
         fireStartedAt.current = null;
         if (muzzleFlash.current) muzzleFlash.current.intensity = 0;
@@ -238,8 +267,8 @@ function InteractiveRevolver({
     }
   });
 
-  // Muzzle flash light position (in front of barrel — flips with target)
-  const flashZ = held && target === "opponent" ? -0.5 : 0.5;
+  // Muzzle flash position — slightly in front of model origin in its local Z
+  const flashZ = held && target === "opponent" ? -0.55 : 0.55;
 
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -274,7 +303,7 @@ function Scene({
 }) {
   return (
     <>
-      <CameraInit />
+      <CameraInit firing={firing} held={gunHeld} />
       <ambientLight intensity={0.02} color="#100502" />
       <HangingSpot />
 
@@ -322,7 +351,7 @@ export default function DuelArena3D({
   return (
     <Canvas
       shadows="basic"
-      camera={{ position: [0.05, 0.78, 1.15], fov: 48 }}
+      camera={{ position: [0.04, 0.7, 0.85], fov: 52 }}
       gl={{
         antialias: false,
         alpha: false,
@@ -349,9 +378,9 @@ export default function DuelArena3D({
       </Suspense>
 
       <EffectComposer>
-        <Pixelation granularity={3} />
-        <Bloom intensity={0.9} luminanceThreshold={0.5} luminanceSmoothing={0.4} mipmapBlur />
-        <Noise opacity={0.045} />
+        <Pixelation granularity={5} />
+        <Bloom intensity={1.1} luminanceThreshold={0.45} luminanceSmoothing={0.4} mipmapBlur />
+        <Noise opacity={0.055} />
         <Vignette eskil={false} offset={0.22} darkness={0.95} />
       </EffectComposer>
     </Canvas>

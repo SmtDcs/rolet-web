@@ -444,7 +444,7 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
         firing={firing}
       />
 
-      {/* Hit flash overlay */}
+      {/* Hit flash overlay (red, when player takes damage) */}
       <AnimatePresence>
         {hitFlash === "player" && (
           <motion.div
@@ -455,6 +455,21 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.55, ease: "easeOut" }}
             style={{ background: "radial-gradient(ellipse at 50% 90%, rgba(255,0,0,0.55) 0%, rgba(140,0,0,0.35) 40%, transparent 70%)" }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Muzzle FLASH overlay — white/yellow, instant when PULL TRIGGER fires */}
+      <AnimatePresence>
+        {firing && (
+          <motion.div
+            key="fire-flash"
+            className="pointer-events-none fixed inset-0 z-[99] mix-blend-screen"
+            initial={{ opacity: 0.85 }}
+            animate={{ opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            style={{ background: "radial-gradient(circle at 50% 55%, rgba(255,240,180,0.85) 0%, rgba(255,140,40,0.45) 25%, transparent 60%)" }}
           />
         )}
       </AnimatePresence>
@@ -711,21 +726,21 @@ function CCTVViewport({
           pointer-events-none on the outer wrapper so clicks pass to the
           Canvas behind (gun is interactive). */}
       <div
-        className="relative aspect-[16/8] border-2 border-rust/70 bg-transparent"
+        className="relative aspect-[16/8] border border-rust/40 bg-transparent"
         style={{
           boxShadow:
-            "inset 0 0 40px rgba(120,30,10,0.35), 0 0 24px rgba(60,10,5,0.6)",
+            "inset 0 0 30px rgba(120,30,10,0.18), 0 0 16px rgba(60,10,5,0.4)",
         }}
       >
-        {/* Corner brackets (CCTV monitor style) */}
-        <div className="pointer-events-none absolute top-1 left-1 h-6 w-6 border-t-2 border-l-2 border-red-500" />
-        <div className="pointer-events-none absolute top-1 right-1 h-6 w-6 border-t-2 border-r-2 border-red-500" />
-        <div className="pointer-events-none absolute bottom-1 left-1 h-6 w-6 border-b-2 border-l-2 border-red-500" />
-        <div className="pointer-events-none absolute bottom-1 right-1 h-6 w-6 border-b-2 border-r-2 border-red-500" />
+        {/* Corner brackets (CCTV monitor style) — dimmer */}
+        <div className="pointer-events-none absolute top-1 left-1 h-5 w-5 border-t border-l border-red-600/60" />
+        <div className="pointer-events-none absolute top-1 right-1 h-5 w-5 border-t border-r border-red-600/60" />
+        <div className="pointer-events-none absolute bottom-1 left-1 h-5 w-5 border-b border-l border-red-600/60" />
+        <div className="pointer-events-none absolute bottom-1 right-1 h-5 w-5 border-b border-r border-red-600/60" />
 
-        {/* Scanline overlay */}
+        {/* Scanline overlay — barely visible */}
         <div
-          className="pointer-events-none absolute inset-0 opacity-[0.08] mix-blend-screen"
+          className="pointer-events-none absolute inset-0 opacity-[0.04] mix-blend-screen"
           style={{
             backgroundImage:
               "repeating-linear-gradient(0deg, rgba(255,200,180,0.4) 0 1px, transparent 1px 3px)",
