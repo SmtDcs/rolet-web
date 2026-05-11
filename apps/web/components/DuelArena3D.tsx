@@ -80,20 +80,20 @@ function GLBModel({
   return <primitive object={model} position={position} rotation={rotation} scale={scale} />;
 }
 
-// ── Flickering spotlight (wider cone so the table edges aren't pitch black) ──
+// ── Flickering spotlight — calmed down, no more nuclear glow ─────────────────
 function HangingSpot() {
   const light = useRef<THREE.SpotLight>(null);
   const target = useRef<THREE.Object3D>(new THREE.Object3D());
-  const baseIntensity = 55;
+  const baseIntensity = 12;
 
   useFrame(({ clock }) => {
     if (!light.current) return;
     const t = clock.elapsedTime;
     const flicker =
-      0.92 +
-      Math.sin(t * 53.7) * 0.05 +
-      Math.sin(t * 17.1) * 0.04 +
-      (Math.random() < 0.012 ? -0.45 : 0);
+      0.94 +
+      Math.sin(t * 53.7) * 0.04 +
+      Math.sin(t * 17.1) * 0.03 +
+      (Math.random() < 0.01 ? -0.35 : 0);
     light.current.intensity = Math.max(0.1, baseIntensity * flicker);
     light.current.position.x = Math.sin(t * 0.6) * 0.04;
     light.current.position.z = Math.cos(t * 0.5) * 0.03;
@@ -104,14 +104,14 @@ function HangingSpot() {
       <primitive object={target.current} position={[0, 0, 0]} />
       <spotLight
         ref={light}
-        position={[0, 1.4, 0]}
+        position={[0, 2.0, 0]}
         target={target.current}
-        angle={0.85}
-        penumbra={0.35}
+        angle={0.7}
+        penumbra={0.4}
         intensity={baseIntensity}
-        distance={6}
-        decay={1.4}
-        color="#ffb86b"
+        distance={5}
+        decay={1.8}
+        color="#ffb072"
         castShadow
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
@@ -160,19 +160,21 @@ function SwingingLantern() {
   );
 }
 
-// ── Camera — pulled in a bit closer to see table details + bullets ──────────
+// ── Camera — sitting at the table, looking across it, not down on it ────────
 function CameraInit({ firing }: { firing: boolean }) {
   useFrame(({ camera, clock }, delta) => {
     const lerp = Math.min(1, delta * 3);
     const sway = Math.sin(clock.elapsedTime * 0.4) * 0.006;
+    // Eye-level view: lower the camera, look across the table not steeply down.
     camera.position.x += (0.0 + sway - camera.position.x) * lerp;
-    camera.position.y += (1.2 - camera.position.y) * lerp;
-    camera.position.z += (1.5 - camera.position.z) * lerp;
-    camera.lookAt(0, 0, 0);
+    camera.position.y += (0.55 - camera.position.y) * lerp;
+    camera.position.z += (1.25 - camera.position.z) * lerp;
+    // Look toward the far edge of the table, slight downward angle.
+    camera.lookAt(0, 0.1, -0.6);
 
     if ("fov" in camera) {
       const persp = camera as THREE.PerspectiveCamera;
-      const targetFov = firing ? 62 : 55;
+      const targetFov = firing ? 60 : 52;
       persp.fov += (targetFov - persp.fov) * lerp;
       persp.updateProjectionMatrix();
     }
@@ -327,10 +329,8 @@ function Scene({
   return (
     <>
       <CameraInit firing={firing === "live"} />
-      {/* A touch more ambient so table details + bullets read clearly */}
-      <ambientLight intensity={0.08} color="#2a1408" />
-      {/* Soft fill over the table so bullets aren't lost in shadow */}
-      <pointLight position={[0, 1.2, 0.4]} color="#ffba70" intensity={3} distance={2.5} decay={2} />
+      {/* Very low ambient — keeps the dark-room mood */}
+      <ambientLight intensity={0.04} color="#1a0c04" />
       <HangingSpot />
 
       {/* Floor — nearly black, catches the shadow pool */}
@@ -379,12 +379,12 @@ export default function DuelArena3D({
   return (
     <Canvas
       shadows="basic"
-      camera={{ position: [0.0, 1.2, 1.5], fov: 55 }}
+      camera={{ position: [0.0, 0.55, 1.25], fov: 52 }}
       gl={{
         antialias: false,
         alpha: false,
         toneMapping: THREE.ACESFilmicToneMapping,
-        toneMappingExposure: 0.75,
+        toneMappingExposure: 0.55,
       }}
       style={{
         position: "absolute",
@@ -404,10 +404,15 @@ export default function DuelArena3D({
       </Suspense>
 
       <EffectComposer>
-        <Pixelation granularity={5} />
-        <Bloom intensity={1.1} luminanceThreshold={0.45} luminanceSmoothing={0.4} mipmapBlur />
-        <Noise opacity={0.055} />
-        <Vignette eskil={false} offset={0.22} darkness={0.95} />
+        <Pixelation granularity={4} />
+        <Bloom
+          intensity={0.45}
+          luminanceThreshold={0.85}
+          luminanceSmoothing={0.5}
+          mipmapBlur
+        />
+        <Noise opacity={0.04} />
+        <Vignette eskil={false} offset={0.28} darkness={0.85} />
       </EffectComposer>
     </Canvas>
   );
