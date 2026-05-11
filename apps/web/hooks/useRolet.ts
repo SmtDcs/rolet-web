@@ -475,7 +475,7 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
    * 8 (disc) + 8 (match_id) + 32 (host) + 32 (host_commit) = 80 bytes.
    * If byte 80 is 0, the option is None.
    */
-  const findOpenLobby = useCallback(async () => {
+  const findOpenLobby = useCallback(async (excludeHost?: PublicKey) => {
     if (!programL1) return null;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -487,9 +487,11 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
           },
         },
       ]);
-      if (lobbies.length > 0) {
-        // Return the first available match ID
-        return lobbies[0].account.matchId as BN;
+      const filtered = excludeHost
+        ? lobbies.filter((l: any) => !l.account.host.equals(excludeHost)) // eslint-disable-line @typescript-eslint/no-explicit-any
+        : lobbies;
+      if (filtered.length > 0) {
+        return filtered[0].account.matchId as BN;
       }
       return null;
     } catch (err) {

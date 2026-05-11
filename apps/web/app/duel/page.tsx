@@ -1294,19 +1294,34 @@ function HostWaiting({ matchId }: { matchId: BN }) {
     ? `${window.location.origin}/duel?join=${matchHex}`
     : `/duel?join=${matchHex}`;
 
-  // Poll lobby every 1.5s for guest
+  // Poll lobby every 1.5s for guest.
+  // Also checks every 4s for OTHER open lobbies (race-condition fix: both
+  // players opened lobbies simultaneously — whoever finds the other first
+  // auto-navigates to join instead of waiting forever).
   useEffect(() => {
-    if (!rolet.program) return;
+    if (!rolet.program || !wallet.publicKey) return;
     let alive = true;
     const poll = setInterval(async () => {
+      if (!alive) return;
       try {
         const l = await rolet.fetchLobby(matchId);
         if (alive) setLobby(l);
-      } catch { /* swallow RPC errors between polls */ }
+      } catch { /* swallow */ }
     }, 1500);
+
+    const crossCheck = setInterval(async () => {
+      if (!alive) return;
+      try {
+        const otherId = await rolet.findOpenLobby(wallet.publicKey!);
+        if (alive && otherId) {
+          router.replace(`/duel?join=${otherId.toString(16)}&auto=true`);
+        }
+      } catch { /* swallow */ }
+    }, 4000);
+
     rolet.fetchLobby(matchId).then((l) => { if (alive) setLobby(l); });
-    return () => { alive = false; clearInterval(poll); };
-  }, [rolet, matchId]);
+    return () => { alive = false; clearInterval(poll); clearInterval(crossCheck); };
+  }, [rolet, matchId, wallet.publicKey, router]);
 
   const guestReady = !!lobby?.guest;
 
