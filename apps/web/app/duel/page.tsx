@@ -860,6 +860,48 @@ function CCTVViewport({
               );
             })}
           </div>
+
+          {/* Ghost eyes — float just below the chamber row */}
+          <div
+            className="mt-3 pointer-events-none flex items-center gap-10 animate-float"
+            style={{ opacity: 0.38, filter: "drop-shadow(0 0 18px rgba(220,0,0,1))" }}
+          >
+            {([0, 1] as const).map((i) => (
+              <div key={i} style={{ position: "relative", width: 88, height: 38 }}>
+                <svg width="88" height="38" viewBox="0 0 88 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  {/* Sclera */}
+                  <ellipse cx="44" cy="19" rx="42" ry="17" fill="#0c0202" stroke="#4a0a0a" strokeWidth="1"/>
+                  {/* Iris — blood red, glowing */}
+                  <ellipse
+                    cx="44" cy="19" rx="14" ry="14"
+                    fill="#1c0000" stroke="#cc0000" strokeWidth="1.5"
+                    style={{
+                      animation: "rolet-eye-glow 2.8s ease-in-out infinite",
+                      animationDelay: `${i * 0.5}s`,
+                    }}
+                  />
+                  {/* Slit pupil — demon/cat style */}
+                  <ellipse cx="44" cy="19" rx="3" ry="12" fill="#000"/>
+                  {/* Bloodshot veins */}
+                  <line x1="5"  y1="13" x2="30" y2="17" stroke="rgba(160,0,0,0.55)" strokeWidth="0.8"/>
+                  <line x1="6"  y1="24" x2="28" y2="21" stroke="rgba(160,0,0,0.45)" strokeWidth="0.6"/>
+                  <line x1="58" y1="12" x2="82" y2="9"  stroke="rgba(160,0,0,0.55)" strokeWidth="0.8"/>
+                  <line x1="59" y1="25" x2="83" y2="28" stroke="rgba(160,0,0,0.45)" strokeWidth="0.6"/>
+                  <line x1="14" y1="10" x2="32" y2="15" stroke="rgba(140,0,0,0.3)"  strokeWidth="0.5"/>
+                  <line x1="55" y1="22" x2="75" y2="27" stroke="rgba(140,0,0,0.3)"  strokeWidth="0.5"/>
+                </svg>
+                {/* Blink lid */}
+                <div style={{
+                  position: "absolute", inset: 0,
+                  background: "#0a0807",
+                  transformOrigin: "top center",
+                  transform: "scaleY(0)",
+                  animation: "rolet-blink-lid 7s ease-in-out infinite",
+                  animationDelay: `${i * 0.3}s`,
+                }} />
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Bottom-status strip */}
@@ -877,60 +919,6 @@ function CCTVViewport({
   );
 }
 
-function OpponentEyes() {
-  return (
-    <div
-      className="pointer-events-none flex items-center gap-8 animate-float"
-      style={{ filter: "drop-shadow(0 0 10px rgba(180,0,0,0.8))" }}
-    >
-      {[0, 1].map((i) => (
-        <div
-          key={i}
-          style={{
-            position: "relative",
-            width: 64,
-            height: 40,
-            borderRadius: "50%",
-            overflow: "hidden",
-            background: "#0d0303",
-            border: "1.5px solid #5a1212",
-            boxShadow:
-              "0 0 18px rgba(200,10,10,0.75), inset 0 0 10px rgba(0,0,0,0.9)",
-          }}
-        >
-          <div style={{
-            position: "absolute", top: "50%", left: "50%",
-            transform: "translate(-50%, -50%)",
-            width: 26, height: 26, borderRadius: "50%",
-            background: "radial-gradient(circle at 40% 38%, #4a0000, #0a0000 75%)",
-            border: "1.5px solid #cc1111",
-            animation: "rolet-eye-glow 3s ease-in-out infinite",
-            animationDelay: `${i * 0.4}s`,
-          }} />
-          <div style={{
-            position: "absolute", top: "50%", left: "50%",
-            transform: "translate(-50%, -50%)",
-            width: 11, height: 11, borderRadius: "50%", background: "#000",
-          }} />
-          <div style={{
-            position: "absolute", top: "28%", left: "35%",
-            width: 5, height: 3, borderRadius: "50%",
-            background: "rgba(255,60,60,0.5)",
-          }} />
-          <div style={{
-            position: "absolute", inset: 0,
-            background: "#0a0807",
-            transformOrigin: "top center",
-            transform: "scaleY(0)",
-            animation: "rolet-blink-lid 6s ease-in-out infinite",
-            animationDelay: `${i * 0.2 + 0.1}s`,
-          }} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function OpponentHud({
   hp,
   maxHp,
@@ -941,14 +929,11 @@ function OpponentHud({
   status: string;
 }) {
   return (
-    <div className="flex flex-col items-center gap-2 mt-2">
-      <OpponentEyes />
-      <div className="flex items-center gap-4 border border-rust/60 bg-black/70 backdrop-blur-sm px-4 py-2">
-        <div className="text-[10px] tracking-[0.4em] text-zinc-500">OPPONENT</div>
-        <HpBar hp={hp} maxHp={maxHp} accent="opponent" />
-        <div className="text-[10px] tracking-[0.4em] text-rust">
-          STATUS · {status.toUpperCase()}
-        </div>
+    <div className="mt-3 flex items-center gap-4 border border-rust/60 bg-black/70 backdrop-blur-sm px-4 py-2">
+      <div className="text-[10px] tracking-[0.4em] text-zinc-500">OPPONENT</div>
+      <HpBar hp={hp} maxHp={maxHp} accent="opponent" />
+      <div className="text-[10px] tracking-[0.4em] text-rust">
+        STATUS · {status.toUpperCase()}
       </div>
     </div>
   );
