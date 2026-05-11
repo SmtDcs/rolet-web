@@ -14,30 +14,35 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
     (process.env.NEXT_PUBLIC_SOLANA_NETWORK as WalletAdapterNetwork) ??
     WalletAdapterNetwork.Devnet;
 
-  const { endpoint, wsEndpoint } = useMemo(() => {
-    const raw = process.env.NEXT_PUBLIC_RPC_ENDPOINT ?? clusterApiUrl(network);
-    const publicWs = "wss://api.devnet.solana.com";
-    // Relative paths like "/api/rpc" only work in the browser.
-    // During SSR / static build there is no window, so fall back to public devnet.
-    if (raw.startsWith("/")) {
-      if (typeof window !== "undefined") {
-        // HTTP goes through the proxy; WebSocket goes directly to devnet
-        // because Next.js API routes don't support WebSocket protocol upgrade.
-        return { endpoint: `${window.location.origin}${raw}`, wsEndpoint: publicWs };
-      }
-      return { endpoint: clusterApiUrl(network), wsEndpoint: publicWs };
+  const { endpoint, config } = useMemo(() => {
+    const rpcEndpoint = process.env.NEXT_PUBLIC_RPC_ENDPOINT ?? clusterApiUrl(network);
+    const apiKey = process.env.NEXT_PUBLIC_RPCFAST_API_KEY ?? "";
+    // Always use public devnet WebSocket — Next.js API routes don't upgrade to WS,
+    // and browser WebSocket can't set custom auth headers.
+    const wsEndpoint = "wss://api.devnet.solana.com";
+
+    // Relative path = legacy proxy route. Resolve to absolute for the browser.
+    if (rpcEndpoint.startsWith("/")) {
+      const base =
+        typeof window !== "undefined"
+          ? `${window.location.origin}${rpcEndpoint}`
+          : clusterApiUrl(network);
+      return { endpoint: base, config: { wsEndpoint } };
     }
-    return { endpoint: raw, wsEndpoint: undefined };
+
+    // Direct RPC Fast endpoint: attach X-Token header so the browser talks
+    // directly to RPC Fast without a proxy hop, cutting confirmation latency.
+    const httpHeaders = apiKey ? { "X-Token": apiKey } : undefined;
+    return { endpoint: rpcEndpoint, config: { wsEndpoint, ...(httpHeaders && { httpHeaders }) } };
   }, [network]);
 
-  // Memoize wallets — re-instantiating breaks the adapter's listeners.
   const wallets = useMemo(
     () => [new PhantomWalletAdapter(), new SolflareWalletAdapter({ network })],
     [network]
   );
 
   return (
-    <ConnectionProvider endpoint={endpoint} config={wsEndpoint ? { wsEndpoint } : undefined}>
+    <ConnectionProvider endpoint={endpoint} config={config}>
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
