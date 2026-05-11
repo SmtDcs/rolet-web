@@ -1,7 +1,7 @@
 /// <reference types="@react-three/fiber" />
 "use client";
 
-import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber";
+import { Canvas, createPortal, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { useGLTF, Html } from "@react-three/drei";
 import {
   EffectComposer,
@@ -122,22 +122,21 @@ function HangingSpot() {
   );
 }
 
-// ── Camera — close-up first-person view, FOV widens on fire for impact ───────
-function CameraInit({ firing, held }: { firing: boolean; held: boolean }) {
+// ── Camera — first-person sitting at the table, FOV punches on fire ──────────
+function CameraInit({ firing }: { firing: boolean }) {
   useFrame(({ camera, clock }, delta) => {
-    const lerp = Math.min(1, delta * 4);
-    const sway = Math.sin(clock.elapsedTime * 0.45) * 0.008;
-    const targetZ = held ? 0.65 : 0.85; // pulled in when held
-    const targetY = held ? 0.58 : 0.7;
-    camera.position.x += (0.04 + sway - camera.position.x) * lerp;
-    camera.position.y += (targetY - camera.position.y) * lerp;
-    camera.position.z += (targetZ - camera.position.z) * lerp;
-    camera.lookAt(0, 0.05, -0.05);
+    const lerp = Math.min(1, delta * 3);
+    const sway = Math.sin(clock.elapsedTime * 0.4) * 0.008;
+    // Sitting at the table, eye level looking slightly down toward the table
+    camera.position.x += (0.0 + sway - camera.position.x) * lerp;
+    camera.position.y += (0.55 - camera.position.y) * lerp;
+    camera.position.z += (0.7 - camera.position.z) * lerp;
+    camera.lookAt(0, 0.05, -0.6);
 
     // FOV punch on fire — muzzle blast feels closer
     if ("fov" in camera) {
       const persp = camera as THREE.PerspectiveCamera;
-      const targetFov = firing ? 62 : 52;
+      const targetFov = firing ? 68 : 58;
       persp.fov += (targetFov - persp.fov) * lerp;
       persp.updateProjectionMatrix();
     }
@@ -145,12 +144,14 @@ function CameraInit({ firing, held }: { firing: boolean; held: boolean }) {
   return null;
 }
 
-// ── Interactive revolver with state machine ──────────────────────────────────
-// Idle on table  ←→  Raised in front of camera (held)
-//   - Self target: barrel rotated toward camera
-//   - Opponent target: barrel pointed away
-//   - Fire: brief recoil punch + muzzle flash
-function InteractiveRevolver({
+// ── FPS gun — portaled directly under the camera ──────────────────────────────
+// Position/rotation are CAMERA-LOCAL. (0,0,0) is the camera origin.
+//
+// - HELD (opponent target): bottom-right of view, barrel forward → slides in
+// - HELD (self target):     pulled inward + tilted toward camera face
+// - NOT HELD:               parked offscreen below the viewport (-Y)
+// - FIRING:                 recoil kick along +Z (toward camera) + muzzle flash
+function FPSGun({
   held,
   target,
   firing,
@@ -161,20 +162,22 @@ function InteractiveRevolver({
   firing: boolean;
   onPickup: () => void;
 }) {
+  const camera = useThree((s) => s.camera);
   const group = useRef<THREE.Group>(null);
   const muzzleFlash = useRef<THREE.PointLight>(null);
   const { scene } = useGLTF(MODEL_REVOLVER);
+
   const model = useMemo(() => {
     const cloned = scene.clone(true);
     cloned.traverse((obj) => {
       if ((obj as THREE.Mesh).isMesh) {
         const m = obj as THREE.Mesh;
-        m.castShadow = true;
+        m.castShadow = false; // FPS gun doesn't need to cast shadow
         const mats = Array.isArray(m.material) ? m.material : [m.material];
         mats.forEach((mat) => {
           if (mat instanceof THREE.MeshStandardMaterial) {
-            mat.roughness = Math.min(mat.roughness + 0.15, 1);
-            mat.metalness = Math.min(mat.metalness + 0.1, 1);
+            mat.roughness = Math.min(mat.roughness + 0.1, 1);
+            mat.metalness = Math.min(mat.metalness + 0.15, 1);
           }
         });
       }
@@ -182,82 +185,55 @@ function InteractiveRevolver({
     return cloned;
   }, [scene]);
 
-  // Pose targets ──────────────────────────────────────────────────────────────
-  // ON_TABLE — world-space position on the table
-  const TABLE_POS = useMemo(() => new THREE.Vector3(0.05, 0.05, 0.0), []);
-  const TABLE_QUAT = useMemo(
-    () => new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0.55, 0)),
-    []
-  );
+  // Pose targets — all camera-local ─────────────────────────────────────────
+  // Bottom-right of viewport, barrel forward
+  const HELD_OPP_POS = useMemo(() => new THREE.Vector3(0.55, -0.45, -1.05), []);
+  const HELD_OPP_EUL = useMemo(() => new THREE.Euler(-0.05, Math.PI, -0.05), []);
 
-  // HELD — camera-LOCAL offset (bottom-right of view, FPS style)
-  // applied each frame as camera_pos + offset.applyQuaternion(camera_quat)
-  const HELD_OPP_OFFSET = useMemo(() => new THREE.Vector3(0.52, -0.38, -0.78), []);
-  const HELD_SELF_OFFSET = useMemo(() => new THREE.Vector3(0.32, -0.22, -0.55), []);
+  // Pulled inward, tilted up-back toward camera face (turning the gun on yourself)
+  const HELD_SELF_POS = useMemo(() => new THREE.Vector3(0.28, -0.32, -0.72), []);
+  const HELD_SELF_EUL = useMemo(() => new THREE.Euler(0.6, -0.9, 0.25), []);
 
-  // Held rotation: align gun to camera, then apply target-specific extra
-  // Opponent: gun's barrel points away from camera (-Z in camera space).
-  //   Model's barrel is +Z by default → rotate Math.PI on Y.
-  // Self: barrel points up-back toward camera face — gun is tilted inward.
-  const HELD_OPP_EXTRA = useMemo(
-    () => new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0)),
-    []
-  );
-  const HELD_SELF_EXTRA = useMemo(
-    () => new THREE.Quaternion().setFromEuler(new THREE.Euler(0.45, -0.6, 0.25)),
-    []
-  );
-
-  // Scratch vectors (avoid per-frame GC)
-  const _worldPos = useMemo(() => new THREE.Vector3(), []);
-  const _targetQuat = useMemo(() => new THREE.Quaternion(), []);
+  // Hidden — parked below the viewport, slides up from here when picked up
+  const HIDDEN_POS = useMemo(() => new THREE.Vector3(0.55, -1.6, -1.05), []);
 
   const fireStartedAt = useRef<number | null>(null);
 
-  useFrame(({ camera, clock }, delta) => {
+  useFrame(({ clock }, delta) => {
     if (!group.current) return;
     const lerp = Math.min(1, delta * 6);
-
-    // ── Target pose ──────────────────────────────────────────────────────────
-    if (held) {
-      // Camera-attached: offset in camera-local space
-      const offset = target === "self" ? HELD_SELF_OFFSET : HELD_OPP_OFFSET;
-      _worldPos.copy(offset).applyQuaternion(camera.quaternion).add(camera.position);
-
-      // Rotation = camera quaternion * extra (target-specific)
-      const extra = target === "self" ? HELD_SELF_EXTRA : HELD_OPP_EXTRA;
-      _targetQuat.copy(camera.quaternion).multiply(extra);
-    } else {
-      _worldPos.copy(TABLE_POS);
-      _targetQuat.copy(TABLE_QUAT);
-    }
-
-    // Lerp toward target
-    group.current.position.lerp(_worldPos, lerp);
-    group.current.quaternion.slerp(_targetQuat, lerp);
-
-    // Subtle aim sway / table float
     const t = clock.elapsedTime;
-    if (!held) {
-      group.current.position.y += Math.sin(t * 0.8) * 0.003;
-    } else {
-      group.current.position.x += Math.sin(t * 1.3) * 0.0018;
-      group.current.position.y += Math.cos(t * 1.7) * 0.0018;
+
+    const tgtPos = !held
+      ? HIDDEN_POS
+      : target === "self"
+      ? HELD_SELF_POS
+      : HELD_OPP_POS;
+    const tgtEul = target === "self" ? HELD_SELF_EUL : HELD_OPP_EUL;
+
+    group.current.position.lerp(tgtPos, lerp);
+    group.current.rotation.x += (tgtEul.x - group.current.rotation.x) * lerp;
+    group.current.rotation.y += (tgtEul.y - group.current.rotation.y) * lerp;
+    group.current.rotation.z += (tgtEul.z - group.current.rotation.z) * lerp;
+
+    // Aim sway while held
+    if (held) {
+      group.current.position.x += Math.sin(t * 1.3) * 0.0025;
+      group.current.position.y += Math.cos(t * 1.7) * 0.0025;
     }
 
-    // ── Recoil + muzzle flash ────────────────────────────────────────────────
+    // Recoil — kicks along camera +Z (backward toward camera) + up-tilt
     if (firing && fireStartedAt.current === null) {
       fireStartedAt.current = t;
     }
     if (fireStartedAt.current !== null) {
       const elapsed = t - fireStartedAt.current;
-      if (elapsed < 0.65) {
-        const e = Math.max(0, 1 - elapsed / 0.65);
-        // Recoil kicks the gun backward (toward camera) along view axis
-        const kickLocal = new THREE.Vector3(0, e * 0.04, e * 0.12);
-        const kickWorld = kickLocal.applyQuaternion(camera.quaternion);
-        group.current.position.add(kickWorld);
-        if (muzzleFlash.current) muzzleFlash.current.intensity = e * 28;
+      if (elapsed < 0.6) {
+        const e = Math.max(0, 1 - elapsed / 0.6);
+        group.current.position.z += e * 0.22;
+        group.current.position.y += e * 0.05;
+        group.current.rotation.x -= e * 0.35 * delta * 6;
+        if (muzzleFlash.current) muzzleFlash.current.intensity = e * 36;
       } else {
         fireStartedAt.current = null;
         if (muzzleFlash.current) muzzleFlash.current.intensity = 0;
@@ -267,25 +243,30 @@ function InteractiveRevolver({
     }
   });
 
-  // Muzzle flash position — slightly in front of model origin in its local Z
-  const flashZ = held && target === "opponent" ? -0.55 : 0.55;
-
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
-    onPickup();
+    if (!held) onPickup();
   };
 
-  return (
-    <group
-      ref={group}
-      scale={0.18}
-      onClick={handleClick}
-      onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = held ? "default" : "pointer"; }}
-      onPointerOut={() => { document.body.style.cursor = "default"; }}
-    >
-      <primitive object={model} />
-      <pointLight ref={muzzleFlash} position={[0, 0.15, flashZ]} color="#ffaa22" intensity={0} distance={3} decay={2} />
-    </group>
+  // Portal into the camera so position/rotation become camera-local
+  return createPortal(
+    <>
+      {/* Constant fill light attached to camera — keeps the FPS gun visible
+          even when the table spotlight isn't reaching it */}
+      <pointLight position={[0.4, -0.3, -0.8]} color="#ffd9a0" intensity={6} distance={3} decay={2} />
+      <group
+        ref={group}
+        scale={0.32}
+        onClick={handleClick}
+        onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
+        onPointerOut={() => { document.body.style.cursor = "default"; }}
+      >
+        <primitive object={model} />
+        {/* Muzzle flash — in front of barrel (model's +Z local) */}
+        <pointLight ref={muzzleFlash} position={[0, 0.15, -0.6]} color="#ffaa22" intensity={0} distance={5} decay={2} />
+      </group>
+    </>,
+    camera,
   );
 }
 
@@ -303,7 +284,7 @@ function Scene({
 }) {
   return (
     <>
-      <CameraInit firing={firing} held={gunHeld} />
+      <CameraInit firing={firing} />
       <ambientLight intensity={0.02} color="#100502" />
       <HangingSpot />
 
@@ -315,7 +296,8 @@ function Scene({
 
       <GLBModel src={MODEL_TABLE} position={[0, -0.5, 0]} scale={0.6} receiveShadow />
 
-      <InteractiveRevolver
+      {/* FPS gun — portaled into camera, NOT a child of the scene root */}
+      <FPSGun
         held={gunHeld}
         target={target}
         firing={firing}
@@ -351,7 +333,7 @@ export default function DuelArena3D({
   return (
     <Canvas
       shadows="basic"
-      camera={{ position: [0.04, 0.7, 0.85], fov: 52 }}
+      camera={{ position: [0.0, 0.55, 0.7], fov: 58 }}
       gl={{
         antialias: false,
         alpha: false,
