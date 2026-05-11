@@ -125,10 +125,11 @@ function HangingSpot() {
 // ── Camera rig — fixed, slight high-angle creepy tilt ─────────────────────────
 function CameraInit() {
   useFrame(({ camera, clock }) => {
-    // Almost-static, but breathes a tiny amount so it doesn't look frozen
-    const sway = Math.sin(clock.elapsedTime * 0.3) * 0.012;
-    camera.position.set(0.15 + sway, 1.05, 1.55);
-    camera.lookAt(0, 0.05, -0.1);
+    // Almost-static, but breathes a tiny amount so it doesn't look frozen.
+    // Pulled in tighter so the table + revolver fill the CCTV viewport.
+    const sway = Math.sin(clock.elapsedTime * 0.3) * 0.01;
+    camera.position.set(0.12 + sway, 0.82, 1.05);
+    camera.lookAt(0, 0.0, -0.05);
   });
   return null;
 }

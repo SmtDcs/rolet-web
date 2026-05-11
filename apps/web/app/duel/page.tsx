@@ -529,31 +529,26 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
         </span>
       </div>
 
-      <div className="relative z-10 mx-auto grid min-h-screen max-w-7xl grid-rows-[1fr_auto_1fr] gap-4 px-6 pt-16 pb-6">
-        {/* OPPONENT */}
-        <section className="relative flex flex-col items-center justify-end pt-6">
-          <OpponentFigure status={opponentStatus} />
+      <div className="relative z-10 mx-auto grid min-h-screen max-w-7xl grid-rows-[auto_1fr_auto] gap-3 px-6 pt-16 pb-6">
+        {/* OPPONENT HUD ONLY (HP bar + status) — 3D shows through behind */}
+        <section className="relative flex justify-center pt-2">
           <OpponentHud hp={opponentHp} maxHp={4} status={opponentStatus} />
         </section>
 
-        {/* TABLE + GUN */}
-        <section className="relative flex flex-col items-center">
-          <ChamberHud
+        {/* CCTV VIEWPORT — 3D scene shows through this framed window */}
+        <section className="relative flex items-stretch justify-center">
+          <CCTVViewport
             chambers={decoded?.chambers ?? Array(8).fill("empty")}
             currentChamber={decoded?.currentChamber ?? 0}
             liveCount={decoded?.liveCount ?? 0}
             blankCount={decoded?.blankCount ?? 0}
+            turnIsYours={turnIsYours}
+            matchHex={matchId.toString(16)}
           />
-          <Table>
-            <HandCannon turnIsYours={turnIsYours} target={target} />
-          </Table>
         </section>
 
         {/* PLAYER HUD */}
         <section className="relative flex flex-col gap-4 pt-2">
-          <div className="flex justify-center mb-1">
-            <PlayerFigure isYourTurn={turnIsYours} />
-          </div>
           {decoded?.status === "completed" && !settled && (
             <CompletedBanner
               decoded={decoded}
@@ -663,89 +658,131 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
 // ============================================================
 // PRESENTATIONAL COMPONENTS — visuals from Task 5, unchanged
 // ============================================================
-function OpponentFigure({
-  status,
+// ── CCTV-style viewport — 3D scene shows through this frame ──────────────────
+function CCTVViewport({
+  chambers,
+  currentChamber,
+  liveCount,
+  blankCount,
+  turnIsYours,
+  matchHex,
 }: {
-  status: "watching" | "silenced" | "blocking";
+  chambers: Chamber[];
+  currentChamber: number;
+  liveCount: number;
+  blankCount: number;
+  turnIsYours: boolean;
+  matchHex: string;
 }) {
-  return (
-    <div className="animate-float relative h-44 w-72 sm:h-56 sm:w-96">
-      <div
-        className="absolute inset-x-0 bottom-0 h-28"
-        style={{
-          background:
-            "linear-gradient(to bottom, transparent, rgba(20,10,6,0.95) 40%, rgba(10,6,4,1) 100%)",
-          clipPath:
-            "polygon(0 100%, 8% 30%, 22% 12%, 50% 0%, 78% 12%, 92% 30%, 100% 100%)",
-        }}
-      />
-      <div
-        className="animate-breathe absolute left-1/2 top-2 -translate-x-1/2"
-        style={{ filter: "drop-shadow(0 0 22px rgba(180,30,30,0.5))" }}
-      >
-        <svg width="120" height="150" viewBox="0 0 120 150" aria-hidden>
-          <ellipse cx="60" cy="78" rx="46" ry="62" fill="#d8cabb" opacity="0.92" />
-          <ellipse cx="60" cy="78" rx="46" ry="62" fill="url(#porcelain-shadow)" />
-          <ellipse cx="42" cy="68" rx="7" ry="11" fill="#0a0807" className="animate-eye-glow" />
-          <ellipse cx="78" cy="68" rx="7" ry="11" fill="#0a0807" className="animate-eye-glow" />
-          <path d="M 48 110 Q 60 114 72 110" stroke="#1a0e08" strokeWidth="1.5" fill="none" />
-          <path d="M 60 16 L 56 50 L 64 90 L 58 130" stroke="#3a2418" strokeWidth="0.8" fill="none" />
-          <path d="M 38 40 L 50 60 L 46 88" stroke="#3a2418" strokeWidth="0.6" fill="none" />
-          <path d="M 84 38 L 76 70 L 82 100" stroke="#3a2418" strokeWidth="0.6" fill="none" />
-          <path d="M 30 90 L 44 96" stroke="#3a2418" strokeWidth="0.5" fill="none" />
-          <defs>
-            <radialGradient id="porcelain-shadow" cx="50%" cy="60%" r="60%">
-              <stop offset="60%" stopColor="transparent" />
-              <stop offset="100%" stopColor="rgba(20,10,6,0.85)" />
-            </radialGradient>
-          </defs>
-        </svg>
-      </div>
-      {status === "silenced" && (
-        <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] tracking-[0.4em] text-rust">
-          // VOICE STILLED
-        </span>
-      )}
-      {status === "blocking" && (
-        <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] tracking-[0.4em] text-red-500">
-          // SHIELD UP
-        </span>
-      )}
-    </div>
-  );
-}
+  const [time, setTime] = useState("");
+  useEffect(() => {
+    const update = () => {
+      const d = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      setTime(`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`);
+    };
+    update();
+    const t = setInterval(update, 1000);
+    return () => clearInterval(t);
+  }, []);
 
-function PlayerFigure({ isYourTurn }: { isYourTurn: boolean }) {
   return (
-    <div className="animate-float-player relative h-28 w-56 sm:h-36 sm:w-72 opacity-70">
+    <div className="relative w-full max-w-5xl">
+      {/* CCTV frame — transparent interior so 3D shows through */}
       <div
-        className="animate-breathe absolute left-1/2 top-0 -translate-x-1/2"
+        className="relative aspect-[16/8] border-2 border-rust/70 bg-transparent"
         style={{
-          filter: isYourTurn
-            ? "drop-shadow(0 0 18px rgba(120,60,20,0.6))"
-            : "drop-shadow(0 0 8px rgba(60,20,10,0.3))",
+          boxShadow:
+            "inset 0 0 40px rgba(120,30,10,0.35), 0 0 24px rgba(60,10,5,0.6)",
         }}
       >
-        {/* Player viewed from behind — darker silhouette */}
-        <svg width="90" height="110" viewBox="0 0 90 110" aria-hidden>
-          <defs>
-            <radialGradient id="player-glow" cx="50%" cy="40%" r="55%">
-              <stop offset="0%" stopColor={isYourTurn ? "rgba(120,60,20,0.3)" : "transparent"} />
-              <stop offset="100%" stopColor="transparent" />
-            </radialGradient>
-          </defs>
-          {/* Body glow */}
-          <ellipse cx="45" cy="55" rx="38" ry="50" fill="url(#player-glow)" />
-          {/* Head from behind */}
-          <ellipse cx="45" cy="28" rx="20" ry="24" fill="#1a0e08" opacity="0.9" />
-          {/* Neck */}
-          <rect x="39" y="48" width="12" height="10" rx="3" fill="#120908" />
-          {/* Shoulders */}
-          <path d="M 8 62 Q 20 52 45 55 Q 70 52 82 62 L 78 75 Q 60 68 45 70 Q 30 68 12 75 Z"
-            fill="#150a06" opacity="0.95" />
-          {/* Spine hint */}
-          <line x1="45" y1="50" x2="45" y2="90" stroke="#0a0604" strokeWidth="1.5" opacity="0.6" />
-        </svg>
+        {/* Corner brackets (CCTV monitor style) */}
+        <div className="pointer-events-none absolute top-1 left-1 h-6 w-6 border-t-2 border-l-2 border-red-500" />
+        <div className="pointer-events-none absolute top-1 right-1 h-6 w-6 border-t-2 border-r-2 border-red-500" />
+        <div className="pointer-events-none absolute bottom-1 left-1 h-6 w-6 border-b-2 border-l-2 border-red-500" />
+        <div className="pointer-events-none absolute bottom-1 right-1 h-6 w-6 border-b-2 border-r-2 border-red-500" />
+
+        {/* Scanline overlay */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.08] mix-blend-screen"
+          style={{
+            backgroundImage:
+              "repeating-linear-gradient(0deg, rgba(255,200,180,0.4) 0 1px, transparent 1px 3px)",
+          }}
+        />
+
+        {/* CCTV chrome — top row */}
+        <div className="absolute top-2 left-3 right-3 flex items-center justify-between text-[9px] tracking-[0.4em] font-mono">
+          <div className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_6px_rgba(255,0,0,0.9)]" />
+            <span className="text-red-500">● REC</span>
+            <span className="text-rust/70">CAM_01</span>
+            <span className="text-zinc-700">·</span>
+            <span className="text-rust/70">ARENA-MAIN</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-zinc-600">0x{matchHex.slice(0, 6).toUpperCase()}</span>
+            <span className="text-rust/70">{time}</span>
+          </div>
+        </div>
+
+        {/* Chamber indicator row — overlay at top-center of viewport */}
+        <div className="absolute top-9 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5">
+          <div className="flex items-center gap-3 text-[9px] tracking-[0.45em]">
+            <span className="text-zinc-500">8 CHAMBERS</span>
+            <span className="text-rust">·</span>
+            <span className="text-red-500 text-bleed">{liveCount} LIVE</span>
+            <span className="text-rust">·</span>
+            <span className="text-zinc-400">{blankCount} BLANK</span>
+          </div>
+          <div className="flex gap-1.5 items-center">
+            {chambers.map((c, i) => {
+              const isCurrent = i === currentChamber;
+              return (
+                <motion.div
+                  key={i}
+                  animate={isCurrent ? {
+                    scaleY: [1.6, 1.9, 1.6],
+                    boxShadow: ["0 0 8px rgba(220,30,30,0.8)", "0 0 22px rgba(255,40,40,1)", "0 0 8px rgba(220,30,30,0.8)"],
+                  } : { scaleY: 1, boxShadow: "none" }}
+                  transition={isCurrent ? { duration: 1.2, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}
+                  className={`h-3 w-6 border ${
+                    c === "empty"
+                      ? "bg-transparent border-rust/30"
+                      : c === "live"
+                      ? "bg-red-900/70 border-red-700"
+                      : "bg-zinc-700/50 border-zinc-600"
+                  } ${isCurrent ? "-translate-y-0.5" : ""}`}
+                />
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Bottom-status strip */}
+        <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between text-[9px] tracking-[0.4em] font-mono">
+          <span className="text-rust/80">
+            {turnIsYours ? "▶ FIRING SOLUTION ARMED" : "◌ AWAITING OPPONENT"}
+          </span>
+          <span className="text-zinc-600">
+            FEED · 1280x720 · 30FPS · DEVNET
+          </span>
+        </div>
+
+        {/* Crosshair when it's your turn */}
+        {turnIsYours && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <motion.div
+              className="relative h-16 w-16"
+              animate={{ opacity: [0.4, 0.85, 0.4] }}
+              transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <div className="absolute inset-0 border border-red-500/70 rounded-full" />
+              <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-red-500/50" />
+              <div className="absolute top-1/2 left-0 w-full h-px -translate-y-1/2 bg-red-500/50" />
+            </motion.div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -767,184 +804,6 @@ function OpponentHud({
       <div className="text-[10px] tracking-[0.4em] text-rust">
         STATUS · {status.toUpperCase()}
       </div>
-    </div>
-  );
-}
-
-function ChamberHud({
-  chambers,
-  currentChamber,
-  liveCount,
-  blankCount,
-}: {
-  chambers: Chamber[];
-  currentChamber: number;
-  liveCount: number;
-  blankCount: number;
-}) {
-  return (
-    <div className="mb-3 flex flex-col items-center gap-2">
-      <div className="flex items-center gap-3 text-[10px] tracking-[0.45em]">
-        <span className="text-zinc-600">8 CHAMBERS</span>
-        <span className="text-rust">·</span>
-        <span className="text-red-500 text-bleed">{liveCount} LIVE</span>
-        <span className="text-rust">·</span>
-        <span className="text-zinc-400">{blankCount} BLANK</span>
-      </div>
-      <div className="flex gap-1.5 items-center">
-        {chambers.map((c, i) => {
-          const isCurrent = i === currentChamber;
-          return (
-            <motion.div
-              key={i}
-              animate={isCurrent ? {
-                scaleY: [1.6, 1.9, 1.6],
-                boxShadow: ["0 0 8px rgba(220,30,30,0.8)", "0 0 22px rgba(255,40,40,1)", "0 0 8px rgba(220,30,30,0.8)"],
-              } : {
-                scaleY: 1,
-                boxShadow: "none",
-              }}
-              transition={isCurrent ? { duration: 1.2, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}
-              className={`h-3 w-6 border transition-colors ${
-                c === "empty"
-                  ? "bg-transparent border-rust/30"
-                  : c === "live"
-                  ? "bg-red-900/70 border-red-700"
-                  : "bg-zinc-700/50 border-zinc-600"
-              } ${isCurrent ? "-translate-y-0.5" : ""}`}
-              title={`Chamber ${i + 1}: ${c}`}
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function Table({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="relative w-full max-w-3xl h-48 sm:h-56"
-      style={{
-        background:
-          "linear-gradient(to bottom, #2a1810 0%, #180c06 60%, #0a0604 100%)",
-        clipPath: "polygon(8% 0%, 92% 0%, 100% 100%, 0% 100%)",
-        boxShadow:
-          "inset 0 -40px 60px rgba(0,0,0,0.85), inset 0 12px 24px rgba(80,40,15,0.25)",
-      }}
-    >
-      <div
-        className="absolute inset-0 opacity-30 mix-blend-overlay"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(0deg, rgba(70,40,18,0.6) 0 1px, transparent 1px 6px), repeating-linear-gradient(90deg, rgba(40,20,10,0.4) 0 2px, transparent 2px 24px)",
-        }}
-      />
-      <div
-        className="absolute inset-x-0 top-0 h-full"
-        style={{
-          background:
-            "radial-gradient(ellipse at 50% 30%, rgba(255,180,120,0.18) 0%, transparent 55%)",
-        }}
-      />
-      <div className="relative h-full flex items-center justify-center">{children}</div>
-    </div>
-  );
-}
-
-function HandCannon({
-  turnIsYours,
-  target,
-}: {
-  turnIsYours: boolean;
-  target: Target;
-}) {
-  const rotation = target === "self" ? 90 : -90;
-  return (
-    <div
-      className="relative transition-transform duration-700"
-      style={{ transform: `rotate(${rotation}deg)` }}
-    >
-      <svg
-        width="380"
-        height="160"
-        viewBox="0 0 380 160"
-        aria-hidden
-        style={{
-          filter:
-            "drop-shadow(0 12px 18px rgba(0,0,0,0.85)) drop-shadow(0 0 24px rgba(120,30,10,0.35))",
-        }}
-      >
-        <defs>
-          <linearGradient id="rust-metal" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#5a4030" />
-            <stop offset="35%" stopColor="#3a2418" />
-            <stop offset="70%" stopColor="#1f130a" />
-            <stop offset="100%" stopColor="#0a0604" />
-          </linearGradient>
-          <linearGradient id="rust-spots" x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0%" stopColor="#6b4a30" stopOpacity="0.8" />
-            <stop offset="100%" stopColor="#2a1810" stopOpacity="0" />
-          </linearGradient>
-          <radialGradient id="cylinder-grad" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#4a2f1a" />
-            <stop offset="70%" stopColor="#2a1810" />
-            <stop offset="100%" stopColor="#0a0604" />
-          </radialGradient>
-        </defs>
-
-        <rect x="200" y="58" width="160" height="34" fill="url(#rust-metal)" />
-        <rect x="200" y="58" width="160" height="34" fill="url(#rust-spots)" opacity="0.6" />
-        <rect x="354" y="54" width="14" height="42" fill="#0a0604" />
-        <circle cx="361" cy="75" r="6" fill="#000" />
-        <circle cx="160" cy="75" r="50" fill="url(#cylinder-grad)" stroke="#1a0e08" strokeWidth="2" />
-        <circle cx="160" cy="75" r="50" fill="url(#rust-spots)" opacity="0.5" />
-        {Array.from({ length: 8 }).map((_, i) => {
-          const angle = (i / 8) * Math.PI * 2 - Math.PI / 2;
-          const cx = 160 + Math.cos(angle) * 30;
-          const cy = 75 + Math.sin(angle) * 30;
-          return <circle key={i} cx={cx} cy={cy} r="6" fill="#050302" stroke="#3a2418" />;
-        })}
-        <circle cx="160" cy="75" r="6" fill="#1a0e08" stroke="#4a2f1a" />
-        <rect x="100" y="60" width="40" height="40" fill="url(#rust-metal)" />
-        <path d="M 95 58 L 110 48 L 122 60 Z" fill="#2a1810" stroke="#1a0e08" />
-        <path
-          d="M 100 96 L 86 150 L 50 150 L 78 96 Z"
-          fill="#1a0e08"
-          stroke="#0a0604"
-          strokeWidth="2"
-        />
-        <path
-          d="M 88 105 L 70 145 M 92 110 L 76 145 M 96 115 L 82 145"
-          stroke="#3a2418"
-          strokeWidth="1"
-          fill="none"
-          opacity="0.7"
-        />
-        <path
-          d="M 110 100 Q 120 116 110 124 Q 102 116 110 100"
-          fill="#2a1810"
-          stroke="#0a0604"
-        />
-        {turnIsYours && (
-          <circle
-            cx="160"
-            cy="75"
-            r="55"
-            fill="none"
-            stroke="rgba(220,40,30,0.4)"
-            strokeWidth="2"
-          >
-            <animate attributeName="r" values="55;62;55" dur="2.4s" repeatCount="indefinite" />
-            <animate
-              attributeName="stroke-opacity"
-              values="0.4;0.15;0.4"
-              dur="2.4s"
-              repeatCount="indefinite"
-            />
-          </circle>
-        )}
-      </svg>
     </div>
   );
 }
