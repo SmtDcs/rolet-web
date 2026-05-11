@@ -4,47 +4,86 @@ import Link from "next/link";
 import { Nav, Footer } from "@/components/Nav";
 
 // ── Floating eyes ─────────────────────────────────────────────────────────────
+function Eye({ delay }: { delay: number }) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: 90,
+        height: 56,
+        borderRadius: "50%",
+        overflow: "hidden",
+        background: "#0d0303",
+        border: "2px solid #5a1212",
+        boxShadow:
+          "0 0 22px rgba(200,10,10,0.8), 0 0 6px rgba(200,10,10,0.5), inset 0 0 14px rgba(0,0,0,0.9)",
+      }}
+    >
+      {/* Iris */}
+      <div
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          width: 38,
+          height: 38,
+          borderRadius: "50%",
+          background: "radial-gradient(circle at 40% 38%, #4a0000, #0a0000 75%)",
+          border: "1.5px solid #cc1111",
+          animation: "rolet-eye-glow 3s ease-in-out infinite",
+          animationDelay: `${delay}s`,
+        }}
+      />
+      {/* Pupil */}
+      <div
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          width: 17,
+          height: 17,
+          borderRadius: "50%",
+          background: "#000",
+        }}
+      />
+      {/* Glint */}
+      <div
+        style={{
+          position: "absolute",
+          top: "28%",
+          left: "35%",
+          width: 7,
+          height: 4,
+          borderRadius: "50%",
+          background: "rgba(255,60,60,0.55)",
+        }}
+      />
+      {/* Blink lid — scaleY from 0 (open) to 1 (closed), origin top */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "#0a0807",
+          transformOrigin: "top center",
+          transform: "scaleY(0)",
+          animation: "rolet-blink-lid 6s ease-in-out infinite",
+          animationDelay: `${delay + 0.05}s`,
+        }}
+      />
+    </div>
+  );
+}
+
 function GhostEyes() {
   return (
-    <div className="pointer-events-none flex items-center gap-10 animate-float">
-      {[0, 1].map((i) => (
-        <div
-          key={i}
-          className="relative"
-          style={{
-            width: 72,
-            height: 44,
-            filter: "drop-shadow(0 0 14px rgba(200,20,20,0.85))",
-          }}
-        >
-          {/* Eyelid outer */}
-          <svg viewBox="0 0 72 44" width="72" height="44" xmlns="http://www.w3.org/2000/svg">
-            {/* White (sclera) */}
-            <ellipse cx="36" cy="22" rx="34" ry="20" fill="#1a0808" stroke="#5a1010" strokeWidth="1.5" />
-            {/* Iris */}
-            <ellipse
-              cx="36"
-              cy="22"
-              rx="16"
-              ry="16"
-              fill="#1a0000"
-              stroke="#cc1111"
-              strokeWidth="1"
-              style={{ animation: "rolet-eye-glow 3s ease-in-out infinite", animationDelay: `${i * 0.4}s` }}
-            />
-            {/* Pupil */}
-            <ellipse cx="36" cy="22" rx="7" ry="7" fill="#000" />
-            {/* Glint */}
-            <ellipse cx="30" cy="17" rx="3" ry="2" fill="rgba(255,80,80,0.55)" />
-            {/* Top lid — blink clips the iris */}
-            <ellipse cx="36" cy="2" rx="34" ry="20" fill="#0a0807"
-              style={{ animation: `rolet-blink 5s ease-in-out infinite`, animationDelay: `${i * 0.15 + 0.2}s` }}
-            />
-            {/* Bottom lid */}
-            <ellipse cx="36" cy="42" rx="34" ry="20" fill="#0a0807" />
-          </svg>
-        </div>
-      ))}
+    <div
+      className="pointer-events-none flex items-center gap-14 animate-float"
+      style={{ filter: "drop-shadow(0 0 12px rgba(180,0,0,0.7))" }}
+    >
+      <Eye delay={0} />
+      <Eye delay={0.35} />
     </div>
   );
 }

@@ -307,7 +307,7 @@ function FPSGun({
     >
       <primitive object={model} />
       {/* Local fill light — keeps gun lit against the dark void */}
-      <pointLight position={[0.3, 0.5, 0.3]} color="#ffd9a0" intensity={4} distance={2} decay={2} />
+      <pointLight position={[0.3, 0.5, 0.3]} color="#ffd9a0" intensity={1.8} distance={2} decay={2} />
       {/* Muzzle flash — placed at barrel tip (outer local -Z = barrel direction) */}
       <pointLight ref={muzzleFlash} position={[0, 0.1, -0.65]} color="#ffaa22" intensity={0} distance={6} decay={2} />
     </group>
@@ -351,11 +351,11 @@ function Scene({
       {/* Hanging lantern — swings gently, visible above the table */}
       <SwingingLantern />
 
-      {/* Bullets scattered on the table — larger so they read at distance */}
-      <GLBModel src={MODEL_BULLET} position={[-0.45, 0.08, 0.2]} rotation={[Math.PI / 2, 0, 0.3]} scale={0.1} />
-      <GLBModel src={MODEL_BULLET} position={[0.55, 0.08, 0.1]} rotation={[Math.PI / 2, 0, -0.7]} scale={0.1} />
-      <GLBModel src={MODEL_BULLET} position={[-0.18, 0.08, 0.4]} rotation={[Math.PI / 2, 0, 1.4]} scale={0.1} />
-      <GLBModel src={MODEL_BULLET} position={[0.35, 0.08, 0.35]} rotation={[Math.PI / 2, 0, -0.2]} scale={0.1} />
+      {/* Bullets scattered on the table */}
+      <GLBModel src={MODEL_BULLET} position={[-0.45, 0.14, 0.2]} rotation={[Math.PI / 2, 0, 0.3]} scale={0.25} />
+      <GLBModel src={MODEL_BULLET} position={[0.55, 0.14, 0.1]} rotation={[Math.PI / 2, 0, -0.7]} scale={0.25} />
+      <GLBModel src={MODEL_BULLET} position={[-0.18, 0.14, 0.4]} rotation={[Math.PI / 2, 0, 1.4]} scale={0.25} />
+      <GLBModel src={MODEL_BULLET} position={[0.35, 0.14, 0.35]} rotation={[Math.PI / 2, 0, -0.2]} scale={0.25} />
     </>
   );
 }

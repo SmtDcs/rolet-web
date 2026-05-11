@@ -181,11 +181,11 @@
   100% { background-position: 0 0; }
 }
 
-@keyframes rolet-blink {
-  0%, 88%, 100% { ry: 20; }
-  92%            { ry: 22; }
-  94%            { ry: 0;  }
-  96%            { ry: 22; }
+@keyframes rolet-blink-lid {
+  0%, 88%, 100% { transform: scaleY(0); }
+  92%           { transform: scaleY(0.08); }
+  94%           { transform: scaleY(1); }
+  97%           { transform: scaleY(0); }
 }
 
 /* ──────────────────────────────────────────────────────────────
