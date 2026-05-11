@@ -314,28 +314,14 @@ export function useRolet({ ephemeral = false }: { ephemeral?: boolean } = {}) {
           .rpc({ commitment: "confirmed" });
         emitToast("success", `Session registered · ${regSig.slice(0, 6)}…`);
 
-        // 2. Fund the session keypair so it can sign ER/L1 txs without
-        //    re-prompting Phantom every time. ~0.005 SOL is enough for many
-        //    turns; ER fees are ~zero, this is mostly insurance.
+        // 2. Fund the session keypair via devnet airdrop (no wallet popup).
+        //    On mainnet this would need a wallet transfer instead.
         try {
-          const transfer = SystemProgram.transfer({
-            fromPubkey: wallet.publicKey,
-            toPubkey: kp.publicKey,
-            lamports: 0.005 * LAMPORTS_PER_SOL,
-          });
-          const fundTx = new Transaction().add(transfer);
-          fundTx.feePayer = wallet.publicKey;
-          fundTx.recentBlockhash = (
-            await l1Connection.getLatestBlockhash()
-          ).blockhash;
-          if (wallet.signTransaction) {
-            const signed = await wallet.signTransaction(fundTx);
-            await l1Connection.sendRawTransaction(signed.serialize());
-          }
+          const sig = await l1Connection.requestAirdrop(kp.publicKey, 0.005 * LAMPORTS_PER_SOL);
+          await l1Connection.confirmTransaction(sig, "confirmed");
         } catch {
-          // Funding is best-effort; on devnet you may already have airdropped
-          // SOL or the wallet may decline.
-          emitToast("info", "Session funding skipped — you may need to airdrop");
+          // Airdrop is best-effort — devnet faucet can be rate-limited.
+          emitToast("info", "Session funding skipped — airdrop rate-limited");
         }
 
         const state: SessionKeyState = {

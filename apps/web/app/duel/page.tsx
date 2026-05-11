@@ -454,23 +454,12 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
               </Link>
             </div>
           )}
-          {decoded?.status !== "completed" && !rolet.sessionKey && (
-            <div className="border border-red-700 bg-gradient-to-r from-[#1a0606]/80 via-black/60 to-[#1a0606]/80 px-4 py-3 flex items-center justify-between">
-              <div>
-                <div className="text-[9px] tracking-[0.4em] text-red-500">
-                  // WEAPON UNARMED
-                </div>
-                <div className="text-[11px] tracking-[0.2em] text-zinc-400 mt-1">
-                  Arm a session key — one signature, then gasless turns.
-                </div>
-              </div>
-              <button
-                onClick={handleArm}
-                disabled={!wallet.connected || rolet.busy}
-                className="border-2 border-red-600 bg-black/60 px-5 py-3 font-display tracking-[0.4em] text-red-400 hover:text-red-200 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                ▼ ARM WEAPON ▼
-              </button>
+          {decoded?.status !== "completed" && !rolet.sessionKey && rolet.busy && (
+            <div className="border border-rust/40 bg-black/60 px-4 py-3 flex items-center gap-3">
+              <span className="h-2 w-2 rounded-full bg-red-600 animate-pulse" />
+              <span className="text-[10px] tracking-[0.3em] text-zinc-500">
+                // ARMING SESSION KEY…
+              </span>
             </div>
           )}
 
@@ -481,13 +470,13 @@ function ActiveDuel({ matchId }: { matchId: BN }) {
               selectedSlot={selectedSlot}
               onSelect={setSelectedSlot}
               onPlay={handlePlayCard}
-              disabled={!turnIsYours || !rolet.sessionKey || !!decoded?.silencedYou || rolet.busy}
+              disabled={!turnIsYours || !!decoded?.silencedYou || rolet.busy}
             />
             <ActionPanel
               target={target}
               onTargetChange={setTarget}
               onPull={handlePullTrigger}
-              disabled={!turnIsYours || !rolet.sessionKey || rolet.busy}
+              disabled={!turnIsYours || rolet.busy}
             />
           </div>
 
@@ -1295,6 +1284,16 @@ function HostWaiting({ matchId }: { matchId: BN }) {
     ? `${window.location.origin}/duel?join=${matchHex}`
     : `/duel?join=${matchHex}`;
 
+  // Auto-arm session key while waiting for opponent — one popup now means
+  // zero popups during the match itself.
+  const autoArmedRef = useRef(false);
+  useEffect(() => {
+    if (!wallet.publicKey || !rolet.program || rolet.sessionKey || autoArmedRef.current) return;
+    autoArmedRef.current = true;
+    rolet.startSession(60 * 60).catch(() => { autoArmedRef.current = false; });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!wallet.publicKey, !!rolet.program, !!rolet.sessionKey]);
+
   // useRolet returns a NEW object reference every render (busy is useState).
   // Putting `rolet` in the effect's dep array means the poll fires setLobby
   // every 2s → re-render → rolet is new → effect cleanup → 6s timer resets.
@@ -1441,6 +1440,15 @@ function GuestLobby({ matchId, autoJoin = false }: { matchId: BN, autoJoin?: boo
   const [busy, setBusy] = useState(false);
   // useRef is synchronous — prevents double-fire from React batching setState
   const autoTriggeredRef = useRef(false);
+
+  // Auto-arm session key while waiting — one popup now, zero popups in-match.
+  const guestArmedRef = useRef(false);
+  useEffect(() => {
+    if (!wallet.publicKey || !rolet.program || rolet.sessionKey || guestArmedRef.current) return;
+    guestArmedRef.current = true;
+    rolet.startSession(60 * 60).catch(() => { guestArmedRef.current = false; });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!wallet.publicKey, !!rolet.program, !!rolet.sessionKey]);
 
   const handleJoin = useCallback(async () => {
     if (!wallet.publicKey) return;
