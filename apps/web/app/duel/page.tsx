@@ -1345,14 +1345,13 @@ function HostWaiting({ matchId }: { matchId: BN }) {
   }, [rolet, matchId, wallet.publicKey, router]);
 
   const guestReady = !!lobby?.guest;
+  const autoLaunchedRef = useRef(false);
 
   const handleLaunch = useCallback(async () => {
     if (!wallet.publicKey || !lobby) return;
     setLaunching(true);
     try {
       const guestPk = lobby.guest as PublicKey;
-      // initMatch reads host secret via recallSecret(matchId.toString()),
-      // which was stashed by Lobby when open_lobby was called.
       const sig = await rolet.initMatch({
         matchId,
         opponent: guestPk,
@@ -1369,6 +1368,14 @@ function HostWaiting({ matchId }: { matchId: BN }) {
     }
   }, [wallet.publicKey, lobby, matchHex, matchId, rolet, router]);
 
+  // Auto-launch as soon as a guest is detected — no button press needed
+  useEffect(() => {
+    if (guestReady && !autoLaunchedRef.current && !launching && !rolet.busy) {
+      autoLaunchedRef.current = true;
+      handleLaunch();
+    }
+  }, [guestReady, launching, rolet.busy, handleLaunch]);
+
   return (
     <LobbyShell subtitle={`LOBBY · 0x${matchHex.toUpperCase()}`} statusTag={guestReady ? "// CHALLENGER FOUND" : "// WAITING"} toasts={toasts}>
       <span className="text-[10px] tracking-[0.6em] text-zinc-600 mb-4">
@@ -1376,37 +1383,39 @@ function HostWaiting({ matchId }: { matchId: BN }) {
       </span>
 
       <h1 className="font-display text-bleed leading-none select-none" style={{ fontSize: "clamp(2rem, 7vw, 5rem)" }}>
-        {guestReady ? "MATCH READY" : "SCANNING…"}
+        {launching || rolet.busy ? "LAUNCHING…" : guestReady ? "OPPONENT FOUND" : "SCANNING…"}
       </h1>
 
       <div className="mt-8 w-full max-w-xl border border-rust/60 bg-black/70 p-4 text-left">
         <div className="text-[9px] tracking-[0.4em] text-rust mb-2">// LOBBY STATUS</div>
-        <div className="flex items-center gap-3">
-          <code className="flex-1 text-[11px] text-zinc-300">
-            {guestReady ? "An opponent has matched with your lobby." : "Waiting for another player to click 'Find Match'..."}
-          </code>
-        </div>
+        <code className="text-[11px] text-zinc-300">
+          {launching || rolet.busy
+            ? "Initializing match on-chain…"
+            : guestReady
+            ? "Opponent joined — launching automatically…"
+            : "Scanning for an opponent…"}
+        </code>
       </div>
 
       <div className="mt-6 flex items-center gap-4">
         <div className={`h-2 w-2 rounded-full ${guestReady ? "bg-red-500 shadow-[0_0_8px_rgba(220,30,30,0.8)]" : "bg-zinc-700"} animate-pulse`} />
         <span className="text-[10px] tracking-[0.4em] text-zinc-500">
           {guestReady
-            ? `OPPONENT JOINED · ${(lobby.guest as PublicKey).toBase58().slice(0, 8)}…`
-            : "waiting for opponent wallet…"}
+            ? `OPPONENT · ${(lobby.guest as PublicKey).toBase58().slice(0, 8)}…`
+            : "waiting for opponent…"}
         </span>
       </div>
 
-      <button
-        onClick={handleLaunch}
-        disabled={!guestReady || launching || rolet.busy}
-        className="mt-8 border-2 border-red-600 bg-gradient-to-b from-red-950/60 to-black px-10 py-5 font-display tracking-[0.4em] text-xl text-red-400 text-bleed animate-blood transition-all hover:text-red-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:animate-none"
-      >
-        {launching || rolet.busy ? "▼ LAUNCHING…" : "▼ LAUNCH MATCH ▼"}
-        <div className="mt-1 text-[8px] tracking-[0.5em] text-rust">
-          {guestReady ? "signs init_match · seals both commits" : "disabled until opponent joins"}
-        </div>
-      </button>
+      {/* Manual fallback in case auto-launch fails */}
+      {guestReady && !launching && !rolet.busy && (
+        <button
+          onClick={handleLaunch}
+          className="mt-8 border-2 border-red-600 bg-gradient-to-b from-red-950/60 to-black px-10 py-5 font-display tracking-[0.4em] text-xl text-red-400 text-bleed animate-blood transition-all hover:text-red-200"
+        >
+          ▼ LAUNCH MATCH ▼
+          <div className="mt-1 text-[8px] tracking-[0.5em] text-rust">tap if auto-launch stalled</div>
+        </button>
+      )}
     </LobbyShell>
   );
 }
